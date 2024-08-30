@@ -4,6 +4,11 @@ class NonBytesInput(Exception):
         super().__init__(f'File {file_name} data must be bytes')
 
 
+class BytesDecodeError(Exception):
+    def __init__(self, file_name):
+        super().__init__(f'File {file_name} data could not be decoded into the given extension')
+
+
 class FileNameConflict(Exception):
     def __init__(self, file_name):
         super().__init__(f'File {file_name} already exists in the zip folder')

@@ -2,7 +2,7 @@ import io
 import zipfile
 import base64
 
-from .Exceptions import FileNameConflict, ExternalClassOperation, FileNotFound
+from .Exceptions import FileNameConflict, ExternalClassOperation, FileNotFound, BytesDecodeError
 from .File import File
 
 
@@ -19,14 +19,14 @@ class ZipFolder:
 
     def __eq__(self, other):
         self.__check_class(other)
-        return self.raw_files() == other.raw_files()
+        return self.get_bytes() == other.get_bytes()
 
     def __add__(self, other):
         self.__check_class(other)
         self.add_files(other.raw_files())
         return self
 
-    def __getitem__(self, file_name):
+    def __getitem__(self, file_name: str):
         if file_name in self.file_list:
             return File.unpack(file_name, self.__raw_zip.open(file_name).read())
         raise FileNotFound(file_name)
@@ -38,19 +38,37 @@ class ZipFolder:
                 f'compressed size: {self.get_size(compressed=True):,} bytes')
 
     def get_size(self, file_name=None, compressed=False):
+        """
+        returns the size of a file or the entire zip.
+        can return both compressed and normal size.
+
+        :param file_name:           this will return the size of a specific file (disabled by default)
+        :type file_name:            str
+        :param compressed:          if true will return the compressed size (false by default)
+        :type compressed:           bool
+        :return:                    size in bytes of a file or the entire zip
+        :rtype:                     int
+        """
         size = 0
         match file_name:
             case str():
                 if file_name in self.file_list:
                     return getattr(self.__raw_zip.getinfo(file_name), 'compress_size' if compressed else 'file_size')
-                else:
-                    raise FileNotFound(file_name)
+                raise FileNotFound(file_name)
             case _:
                 for file in self.__raw_zip.filelist:
                     size += getattr(file, 'compress_size' if compressed else 'file_size')
         return size
 
     def get(self, file_name):
+        """
+        used to get the data of a specific file.
+        if file not in zip, this will return null instead.
+
+        :param file_name:       file name (if inside a folder add 'folder_name/' before the file name)
+        :type file_name:        str
+        :return:
+        """
         if file_name in self.file_list:
             return File.unpack(file_name, self.__raw_zip.open(file_name).read())
         return None
@@ -59,9 +77,9 @@ class ZipFolder:
         """
         add files to the zip file.
         you can add folders by adding the folder name before the filename separated by a '/'.
+
         :param data:            dict of filename as key and data as value
         :type data:             dict[str, dict] | dict[str, str] | dict[str, bytes]
-        :return:
         """
         for file in data.keys():
             if file in self.file_list:
@@ -69,10 +87,25 @@ class ZipFolder:
         self.__raw_zip = self.__create_zip(dict(self.raw_files(), **data))
 
     def delete_file(self, file_name):
+        """
+        deletes files from the zip file.
+
+        :param file_name:            file name (if inside a folder add 'folder_name/' before the file name)
+        :type file_name:             str
+        :return:                    success status of the deletion (file not found will return False)
+        :rtype:                     bool
+        """
         if file_name in self.file_list:
             self.__raw_zip = self.__edit_zip([file for file in self.file_list if file != file_name])
+            return True
+        return False
 
     def raw_files(self):
+        """
+        used to get a dictionary of all files with file names as keys and data as value.
+        :return:    A dict of all files as name, data pairs.
+        :rtype:      dict
+        """
         return {file: File.unpack(file, self.__raw_zip.open(file).read())
                 for file in self.file_list}
 
@@ -81,7 +114,27 @@ class ZipFolder:
         return [file.filename for file in self.__raw_zip.filelist]
 
     def get_b64(self):
-        return base64.b64encode(self.__edit_zip(byte=True).read()).decode()
+        """
+        the string this function returns can be used in several ways:
+
+        - saving multiple zip into a single file
+        - sending text with an api instead of bytes
+        - ZipFolder can read it and convert it to a zip
+
+        :return:        a base64 string of the zip bytes
+        :rtype:         str
+        """
+        return base64.b64encode(self.get_bytes()).decode()
+
+    def get_bytes(self):
+        """
+        used to get the raw bytes of the zip.
+        ZipFolder can use this response to create an identical zip - ZipFolder(some_zipfolder.get_bytes()).
+
+        :return:        the bytes of the zip
+        :rtype:         bytes
+        """
+        return self.__edit_zip(byte=True).read()
 
     def __check_class(self, other):
         if type(self) is not type(other):
@@ -92,7 +145,10 @@ class ZipFolder:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
             for file_name, data in files.items():
-                file_zip.writestr(f'{file_name}', data=File.pack(file_name, data))
+                try:
+                    file_zip.writestr(f'{file_name}', data=File.pack(file_name, data))
+                except UnicodeDecodeError:
+                    raise BytesDecodeError(file_name)
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r')
 
@@ -123,4 +179,4 @@ class ZipFolder:
         :return:
         """
         with open(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', 'wb') as zfh:
-            zfh.write(self.__edit_zip(byte=True).read())
+            zfh.write(self.get_bytes())

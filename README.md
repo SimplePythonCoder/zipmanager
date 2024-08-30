@@ -1,4 +1,5 @@
 # zipmanager
+[![alt](https://static.pepy.tech/badge/zipmanager)](https://www.pepy.tech/projects/zipmanager)
 ```
 pip install zipmanager
 ```
@@ -9,11 +10,11 @@ It allows you to create and handle zip folders as data without needing to save t
 ```python
 from zipmanager import ZipFolder
 
-file_data = b'some_data'
+file_data = b'some data'
 
 zip_folder = ZipFolder({'file_name.file_extension': file_data})
 # file extension not required
-# ZipFile will hold all the files given in the dictionary
+# ZipFolder will hold all the files given in the dictionary
 
 file_data = zip_folder['file_name.file_extension']
 # will return the file data
@@ -22,6 +23,7 @@ file_data = zip_folder['file_name.file_extension']
 ## Main functions
 ```python
 from zipmanager import ZipFolder
+
 file_data = b'some_data'
 zip_folder = ZipFolder({'file_name.file_extension': file_data})
 
@@ -44,14 +46,20 @@ from zipmanager import ZipFolder
 file_data = b'{"key": "value"}'
 
 zip_folder = ZipFolder({'file_name.json': file_data})
-# .json extension is required to return a dict
+# .json extension is required to return a dict/list/str
 
-data = zip_folder['file_name.json']
-# will return a dict type
+data = zip_folder['file_name.json'] # returns a dict/list/str type
 
 # same for .txt
-file_data = {'key': 'value'}
+file_data = b'text file data'
 zip_folder = ZipFolder({'file_name.txt': file_data})
-data = zip_folder['file_name.txt']
-# will return a string
+data = zip_folder['file_name.txt'] # returns a string
+```
+new in version 0.2.0 - files with the zip extension will return a ZipFolder object:
+```python
+from zipmanager import ZipFolder
+
+zip_data = b'some zip data'
+zip_folder = ZipFolder({'file_name.zip': zip_data})
+data = zip_folder['file_name.zip'] # returns a ZipFolder object
 ```
