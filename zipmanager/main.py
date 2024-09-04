@@ -1,14 +1,28 @@
+import binascii
 import io
 import zipfile
 import base64
+from json.decoder import JSONDecodeError
 
-from .Exceptions import FileNameConflict, ExternalClassOperation, FileNotFound, BytesDecodeError
+from .Exceptions import (FileNameConflict, ExternalClassOperation,
+                         FileNotFound, BytesDecodeError, UnsupportedDataType,
+                         Base64DecodingError, EmptyFileName)
 from .File import File
 
 
 class ZipFolder:
 
-    def __init__(self, data: dict[str, dict] | dict[str, str] | dict[str, bytes] | str | bytes):
+    def __init__(self, data):
+        """
+        the data for the zip can be one of the following:
+
+        - dictionary of file names as keys and file data as value (file data can be bytes, str for .txt or dict/list for .json).
+        - base64 str of a zip (from the get_b64 function)
+        - zip bytes (from the get_bytes function)
+
+        :param data:                the data for the zip
+        :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | str | bytes
+        """
         match data:
             case dict():
                 self.__raw_zip = self.__create_zip(data)
@@ -16,6 +30,8 @@ class ZipFolder:
                 self.__raw_zip = self.__b64_to_zip(data)
             case bytes():
                 self.__raw_zip = self.__bytes_to_zip(data)
+            case _:
+                raise UnsupportedDataType(type(data))
 
     def __eq__(self, other):
         self.__check_class(other)
@@ -145,10 +161,13 @@ class ZipFolder:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
             for file_name, data in files.items():
+                if not file_name:
+                    raise EmptyFileName
                 try:
                     file_zip.writestr(f'{file_name}', data=File.pack(file_name, data))
-                except UnicodeDecodeError:
+                except (UnicodeDecodeError, JSONDecodeError):
                     raise BytesDecodeError(file_name)
+
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r')
 
@@ -168,7 +187,10 @@ class ZipFolder:
 
     @staticmethod
     def __b64_to_zip(data):
-        return zipfile.ZipFile(io.BytesIO(base64.b64decode(data)), 'r')
+        try:
+            return zipfile.ZipFile(io.BytesIO(base64.b64decode(data)), 'r')
+        except binascii.Error:
+            raise Base64DecodingError
 
     def save(self, path_with_name='./temp.zip'):
         """

@@ -1,0 +1,35 @@
+name: Bug Report
+description: File a bug report.
+title: "[Bug Report]:"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+        Please make sure to describe the bug in details so we can finally zip it
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      description: What version of zipmanager did you encounter the bug?
+      options:
+        - Latest
+        - 0.2.0
+        - 0.1.0
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: bug-type
+    attributes:
+      label: Where did you encounter the bug?
+      description: Did you encounter a bug in a function, class or somewhere else
+      placeholder: ex. During ZipFolder creation
+    validations:
+      required: true
+  - type: textarea
+    id: free-text
+    attributes:
+      label: What happened?
+      description: Describe the bug here
