@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 # Setting up
 setup(
     name="zipmanager",
-    version='0.2.1',
+    version='0.3.0',
     license="MIT",
     author="SimplePythonCoder",
     author_email="",
@@ -19,10 +19,10 @@ setup(
     keywords=['zip'],
     python_requires='>=3.11',
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Programming Language :: Python :: 3.11',
-        'Operating System :: Microsoft :: Windows',
+        'Operating System :: Microsoft :: Windows :: Windows 10',
         'Topic :: Utilities',
     ],
     project_urls={

@@ -6,7 +6,7 @@ from json.decoder import JSONDecodeError
 
 from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
-                         Base64DecodingError, EmptyFileName)
+                         Base64DecodingError, EmptyFileName, ZipDecodeError)
 from .File import File
 
 
@@ -16,22 +16,25 @@ class ZipFolder:
         """
         the data for the zip can be one of the following:
 
-        - dictionary of file names as keys and file data as value (file data can be bytes, str for .txt or dict/list for .json).
+        - dictionary of file names and file data pairs (file data can be bytes, str for .txt or dict/list for .json)
         - base64 str of a zip (from the get_b64 function)
+        - path of the zip file (must have the .zip extension)
         - zip bytes (from the get_bytes function)
 
         :param data:                the data for the zip
-        :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | str | bytes
+        :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder]
+                                    | str | bytes
         """
         match data:
             case dict():
                 self.__raw_zip = self.__create_zip(data)
             case str():
-                self.__raw_zip = self.__b64_to_zip(data)
+                self.__raw_zip = self.__b64_to_zip(data) if not File.is_path(data) \
+                    else self.__bytes_to_zip(File.open_file(data))
             case bytes():
                 self.__raw_zip = self.__bytes_to_zip(data)
             case _:
-                raise UnsupportedDataType(type(data))
+                self.__raise(UnsupportedDataType, type(data))
 
     def __eq__(self, other):
         self.__check_class(other)
@@ -45,7 +48,7 @@ class ZipFolder:
     def __getitem__(self, file_name: str):
         if file_name in self.file_list:
             return File.unpack(file_name, self.__raw_zip.open(file_name).read())
-        raise FileNotFound(file_name)
+        self.__raise(FileNotFound, file_name)
 
     def __str__(self):
         return (f'Zipfile Object {hex(id(self)).upper()} / '
@@ -70,7 +73,7 @@ class ZipFolder:
             case str():
                 if file_name in self.file_list:
                     return getattr(self.__raw_zip.getinfo(file_name), 'compress_size' if compressed else 'file_size')
-                raise FileNotFound(file_name)
+                self.__raise(FileNotFound, file_name)
             case _:
                 for file in self.__raw_zip.filelist:
                     size += getattr(file, 'compress_size' if compressed else 'file_size')
@@ -99,7 +102,7 @@ class ZipFolder:
         """
         for file in data.keys():
             if file in self.file_list:
-                raise FileNameConflict(file)
+                self.__raise(FileNameConflict, file)
         self.__raw_zip = self.__create_zip(dict(self.raw_files(), **data))
 
     def delete_file(self, file_name):
@@ -154,19 +157,18 @@ class ZipFolder:
 
     def __check_class(self, other):
         if type(self) is not type(other):
-            raise ExternalClassOperation(type(other))
+            self.__raise(ExternalClassOperation, type(other))
 
-    @staticmethod
-    def __create_zip(files):
+    def __create_zip(self, files):
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
             for file_name, data in files.items():
                 if not file_name:
-                    raise EmptyFileName
+                    self.__raise(EmptyFileName)
                 try:
                     file_zip.writestr(f'{file_name}', data=File.pack(file_name, data))
                 except (UnicodeDecodeError, JSONDecodeError):
-                    raise BytesDecodeError(file_name)
+                    self.__raise(BytesDecodeError, file_name)
 
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r')
@@ -181,16 +183,20 @@ class ZipFolder:
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r') if not byte else zip_buffer
 
-    @staticmethod
-    def __bytes_to_zip(data):
-        return zipfile.ZipFile(io.BytesIO(data), 'r')
+    def __bytes_to_zip(self, data):
+        try:
+            return zipfile.ZipFile(io.BytesIO(data), 'r')
+        except zipfile.BadZipfile:
+            self.__raise(ZipDecodeError)
 
-    @staticmethod
-    def __b64_to_zip(data):
+    def __b64_to_zip(self, data):
         try:
             return zipfile.ZipFile(io.BytesIO(base64.b64decode(data)), 'r')
-        except binascii.Error:
-            raise Base64DecodingError
+        except (binascii.Error, zipfile.BadZipfile):
+            self.__raise(Base64DecodingError)
+
+    def __raise(self, exc, *args, **kwargs):
+        raise exc(*args, **kwargs) from None
 
     def save(self, path_with_name='./temp.zip'):
         """
@@ -198,7 +204,6 @@ class ZipFolder:
         path must be with name (extension optional).
         :param path_with_name:      path for save location (empty will save it to current folder)
         :type path_with_name:       str
-        :return:
         """
         with open(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', 'wb') as zfh:
             zfh.write(self.get_bytes())

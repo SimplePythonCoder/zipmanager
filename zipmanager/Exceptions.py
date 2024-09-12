@@ -9,6 +9,12 @@ class BytesDecodeError(Exception):
         super().__init__(f'File "{file_name}" data could not be decoded into the given extension')
 
 
+class ZipDecodeError(Exception):
+    def __init__(self, name=None):
+        super().__init__('could not decode the given bytes into a zip format' if not name
+                         else f'could not decode file "{name}" into a zip format')
+
+
 class FileNameConflict(Exception):
     def __init__(self, file_name):
         super().__init__(f'File "{file_name}" already exists in the zip folder')
@@ -16,7 +22,7 @@ class FileNameConflict(Exception):
 
 class FileNotFound(Exception):
     def __init__(self, file_name):
-        super().__init__(f'File "{file_name}" does no exist in the zip folder')
+        super().__init__(f'File "{file_name}" does not exist in the zip folder')
 
 
 class ExternalClassOperation(Exception):
@@ -37,3 +43,8 @@ class Base64DecodingError(Exception):
 class EmptyFileName(Exception):
     def __init__(self):
         super().__init__('cannot enter empty file name')
+
+
+class PathNotFound(Exception):
+    def __init__(self, path):
+        super().__init__(f'cannot find the path "{path}"')

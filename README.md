@@ -1,5 +1,5 @@
 # zipmanager
-[![alt](https://static.pepy.tech/badge/zipmanager)](https://www.pepy.tech/projects/zipmanager)
+[![downloads](https://static.pepy.tech/badge/zipmanager)](https://www.pepy.tech/projects/zipmanager) [![changelog](https://raw.githubusercontent.com/SimplePythonCoder/zipmanager/main/images/Changelog.svg)](https://github.com/SimplePythonCoder/zipmanager/blob/main/CHANGELOG.md) [![wiki](https://raw.githubusercontent.com/SimplePythonCoder/zipmanager/main/images/Wiki.svg)](https://github.com/SimplePythonCoder/zipmanager/wiki)
 ```
 pip install zipmanager
 ```
