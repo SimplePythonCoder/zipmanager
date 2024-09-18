@@ -119,6 +119,19 @@ class ZipFolder:
             return True
         return False
 
+    def delete_files(self, file_names):  # TODO - change to file list
+        """
+        deletes files from the zip file.
+
+        :param file_names:            list of file names (if inside a folder add 'folder_name/' before the file name)
+        :type file_names:             list[str]
+        :return:                      list of success status of the deletion (file not found will return False)
+        :rtype:                       list[bool]
+        """
+        temp = [file in self.file_list for file in file_names]
+        self.__raw_zip = self.__edit_zip([file for file in self.file_list if file not in file_names])
+        return temp
+
     def raw_files(self):
         """
         used to get a dictionary of all files with file names as keys and data as value.

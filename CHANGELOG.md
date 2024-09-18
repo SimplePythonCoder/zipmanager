@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.1](https://pypi.org/project/zipmanager/0.3.1/) - 2024-09-18
+
+- Added `delete_files` function for multiple files
+
 ## [0.3.0](https://pypi.org/project/zipmanager/0.3.0/) - 2024-09-12
 
 - Added path support
