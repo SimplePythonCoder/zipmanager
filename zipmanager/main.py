@@ -105,6 +105,9 @@ class ZipFolder:
                 self.__raise(FileNameConflict, file)
         self.__raw_zip = self.__create_zip(dict(self.raw_files(), **data))
 
+    def update(self, file_name, new_data):
+        self.__raw_zip = self.__create_zip(dict(self.raw_files(), **{file_name: new_data}))
+
     def delete_file(self, file_name):
         """
         deletes files from the zip file.

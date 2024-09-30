@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.2](https://pypi.org/project/zipmanager/0.3.2/) - 2024-10-1
+
+- Added `update` function
+
+
 ## [0.3.1](https://pypi.org/project/zipmanager/0.3.1/) - 2024-09-18
 
 - Added `delete_files` function for multiple files
