@@ -15,6 +15,33 @@ class File:
         raise exc(*args, **kwargs) from None
 
     @classmethod
+    def get_extension(cls, name):
+        return name.split('.')[1] if '.' in name else ''
+
+    @classmethod
+    def create_base(cls, extension=None):
+        """
+        :param extension:       extension name
+        :type extension:        str
+        :return:                a base file to use for the given file type
+        """
+        match extension:
+            case 'json':
+                return {}
+            case 'list':
+                return []
+            case 'txt' | 'py':
+                return ''
+            case 'zip':
+                return cls.zipmanager.ZipFolder({}).get_bytes()
+            case 'html':
+                return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    '
+                        '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n    '
+                        '<title></title>\n</head>\n<body>\n\n</body>\n</html>')
+            case _:
+                return b''
+
+    @classmethod
     def pack(cls, name, data):
         if cls.is_path(data):
             data = cls.open_file(data)
@@ -23,7 +50,7 @@ class File:
         match name.split('.')[-1]:
             case 'json':
                 return json.dumps(json.loads(data)) if type(data) is bytes else json.dumps(data)
-            case 'txt' | 'py':
+            case 'txt' | 'py' | 'html':
                 return data.decode() if type(data) is bytes \
                     else data if type(data) is str \
                     else cls.__raise(NonBytesInput, name)
@@ -41,7 +68,7 @@ class File:
         match name.split('.')[-1]:
             case 'json':
                 return json.loads(data)
-            case 'txt' | 'py':
+            case 'txt' | 'py' | 'html':
                 return data.decode() if type(data) is bytes else data
             case 'zip':
                 return cls.zipmanager.ZipFolder(data)
@@ -62,3 +89,6 @@ class File:
                 or
                 re.search(r'^(C:|\./|/)(/?[a-zA-Z0-9]+)+(\.[a-zA-Z0-9]*)$', txt)
         )
+
+
+create_base = File.create_base

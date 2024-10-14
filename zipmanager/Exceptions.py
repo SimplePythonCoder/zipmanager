@@ -25,6 +25,11 @@ class FileNotFound(Exception):
         super().__init__(f'File "{file_name}" does not exist in the zip folder')
 
 
+class DuplicateFile(Exception):
+    def __init__(self):
+        super().__init__('the given list contains file name duplications')
+
+
 class ExternalClassOperation(Exception):
     def __init__(self, type_name):
         super().__init__(f'type "{type_name.__name__}" cannot interact with the ZipFolder class')

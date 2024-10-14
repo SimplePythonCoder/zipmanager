@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0](https://pypi.org/project/zipmanager/0.4.0/) - 2024-10-14
+
+- Added `update_files` function for multiple file update
+- Added `change_name` function to change file name
+- Added `create_base` function to create base files based on extension (`from zipmanager import create_base`)
+- Added support for html files
+- Updated ZipFolder object creation to accept `set` type
+- Updated `add_files` to use `set` type
+- Fixed error in `ZipFolder.__init__` docstring
+
 ## [0.3.2](https://pypi.org/project/zipmanager/0.3.2/) - 2024-10-1
 
 - Added `update` function

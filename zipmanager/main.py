@@ -6,7 +6,8 @@ from json.decoder import JSONDecodeError
 
 from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
-                         Base64DecodingError, EmptyFileName, ZipDecodeError)
+                         Base64DecodingError, EmptyFileName, ZipDecodeError,
+                         DuplicateFile)
 from .File import File
 
 
@@ -17,17 +18,20 @@ class ZipFolder:
         the data for the zip can be one of the following:
 
         - dictionary of file names and file data pairs (file data can be bytes, str for .txt or dict/list for .json)
+        - set of file names (will create a base file based on file extension)
         - base64 str of a zip (from the get_b64 function)
         - path of the zip file (must have the .zip extension)
         - zip bytes (from the get_bytes function)
 
         :param data:                the data for the zip
-        :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder]
-                                    | str | bytes
+        :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder] |
+                                    set[str] | str | bytes
         """
         match data:
             case dict():
                 self.__raw_zip = self.__create_zip(data)
+            case set():
+                self.__raw_zip = self.__create_zip(self.__create_base_dict(data))
             case str():
                 self.__raw_zip = self.__b64_to_zip(data) if not File.is_path(data) \
                     else self.__bytes_to_zip(File.open_file(data))
@@ -98,15 +102,56 @@ class ZipFolder:
         you can add folders by adding the folder name before the filename separated by a '/'.
 
         :param data:            dict of filename as key and data as value
-        :type data:             dict[str, dict] | dict[str, str] | dict[str, bytes]
+        :type data:             dict[str, dict] | dict[str, str] | dict[str, bytes]| set[str]
         """
-        for file in data.keys():
-            if file in self.file_list:
-                self.__raise(FileNameConflict, file)
-        self.__raw_zip = self.__create_zip(dict(self.raw_files(), **data))
+        match data:
+            case dict():
+                for file in data.keys():
+                    if file in self.file_list:
+                        self.__raise(FileNameConflict, file)
+                self.__raw_zip = self.__create_zip(dict(self.raw_files(), **data))
+            case set():
+                for file in data:
+                    if file in self.file_list:
+                        self.__raise(FileNameConflict, file)
+                self.__raw_zip = self.__create_zip(dict(self.raw_files(), **self.__create_base_dict(data)))
 
     def update(self, file_name, new_data):
+        """
+        updates file data, this can also be used to add files
+
+        :param file_name:       name of file to update
+        :type file_name:        str
+        :param new_data:       new data for the updated files
+        :type file_name:        str | bytes | dict | list
+        """
         self.__raw_zip = self.__create_zip(dict(self.raw_files(), **{file_name: new_data}))
+
+    def update_files(self, update_dict):
+        """
+        updates file data, this can also be used to add files.
+        this is used for multiple file updates.
+
+        :param update_dict:       name of file to update
+        :type update_dict:        dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder]
+        """
+        self.__raw_zip = self.__create_zip(dict(self.raw_files(), **update_dict))
+
+    def change_name(self, old_name, new_name):
+        """
+        change the name of the file.
+        for non bytes files the extension should remain.
+
+        :param old_name:        old file name
+        :type old_name:         str
+        :param new_name:        new file name
+        :type new_name:         str
+        """
+        if old_name not in self.file_list:
+            self.__raise(FileNotFound, old_name)
+        temp = self.raw_files()
+        temp[new_name] = temp.pop(old_name)
+        self.__raw_zip = self.__create_zip(temp)
 
     def delete_file(self, file_name):
         """
@@ -122,7 +167,7 @@ class ZipFolder:
             return True
         return False
 
-    def delete_files(self, file_names):  # TODO - change to file list
+    def delete_files(self, file_names):
         """
         deletes files from the zip file.
 
@@ -131,6 +176,8 @@ class ZipFolder:
         :return:                      list of success status of the deletion (file not found will return False)
         :rtype:                       list[bool]
         """
+        if len(file_names) != len(set(file_names)):
+            self.__raise(DuplicateFile)
         temp = [file in self.file_list for file in file_names]
         self.__raw_zip = self.__edit_zip([file for file in self.file_list if file not in file_names])
         return temp
@@ -198,6 +245,10 @@ class ZipFolder:
                 file_zip.writestr(f'{file_name}', data=File.pack(file_name, self[file_name]))
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r') if not byte else zip_buffer
+
+    @staticmethod
+    def __create_base_dict(names):
+        return {name: File.create_base(File.get_extension(name)) for name in names}
 
     def __bytes_to_zip(self, data):
         try:
