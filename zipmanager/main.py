@@ -1,14 +1,18 @@
 import binascii
+import hashlib
 import io
+import logging
 import zipfile
 import base64
 from json.decoder import JSONDecodeError
+from contextlib import redirect_stdout
+from zipfile import ZipInfo
 
 from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
                          Base64DecodingError, EmptyFileName, ZipDecodeError,
-                         DuplicateFile)
-from .File import File
+                         UnsupportedOption)
+from .File import File, MetaData
 
 
 class ZipFolder:
@@ -27,6 +31,7 @@ class ZipFolder:
         :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder] |
                                     set[str] | str | bytes
         """
+        self.__metadata = {}
         match data:
             case dict():
                 self.__raw_zip = self.__create_zip(data)
@@ -42,7 +47,7 @@ class ZipFolder:
 
     def __eq__(self, other):
         self.__check_class(other)
-        return self.get_bytes() == other.get_bytes()
+        return self.zip_hash() == other.zip_hash()
 
     def __add__(self, other):
         self.__check_class(other)
@@ -54,11 +59,108 @@ class ZipFolder:
             return File.unpack(file_name, self.__raw_zip.open(file_name).read())
         self.__raise(FileNotFound, file_name)
 
+    def __setitem__(self, key, value):
+        if File.get_extension(key) != 'zip':
+            self.update_file(key, value) if key in self.file_list else self.add_file(key, value)
+        elif type(value) in [list, set, str, dict, bytes]:
+            self.update_file(key, ZipFolder(value))
+
     def __str__(self):
         return (f'Zipfile Object {hex(id(self)).upper()} / '
                 f'file number: {len(self.file_list)} / '
                 f'size: {self.get_size():,} bytes / '
                 f'compressed size: {self.get_size(compressed=True):,} bytes')
+
+    def set_comment(self, comment, file_name=None):
+        """
+        sets comments to the  entire ZipFolder or specific files
+
+        :param comment:         comment to set
+        :type comment:          str
+        :param file_name:       file to set a comment to. if None (is by default) will set for the entire ZipFolder
+        :type file_name:        str
+        """
+        if file_name is None:
+            self.__raw_zip.comment = comment.encode()
+        elif file_name in self.file_list:
+            self.__raw_zip.getinfo(file_name).comment = comment.encode()
+        else:
+            self.__raise(FileNotFound, file_name)
+
+    def get_comment(self, file_name=None):
+        """
+
+        :param file_name:       file to get comment of. if None (is by default) will return the comment of the ZipFolder
+        :type file_name:        str
+        :return:                comment of the ZipFolder or the specified file
+        :rtype:                 str | None
+        """
+        if not file_name:
+            return self.__raw_zip.comment.decode() if self.__raw_zip.comment else None
+        if file_name in self.file_list:
+            return self.__raw_zip.getinfo(file_name).comment.decode() if self.__raw_zip.getinfo(file_name).comment else None
+        else:
+            self.__raise(FileNotFound, file_name)
+
+    def print_zip(self):
+        """
+        prints the printdir of the ZipFolder
+        """
+        with io.StringIO() as string:
+            with redirect_stdout(string):
+                self.__raw_zip.printdir()
+            string.seek(0)
+            print('\n'.join(string.read().split('\n')[:-1]))
+
+    def file_hash(self, file_name, hash_format='sha256', hex_val=True):
+        """
+        get hash of a file from the ZipFolder
+
+        :param file_name:           file to get hash of
+        :type file_name:            str
+        :param hash_format:         hash library to use (sha256 by default).
+                                    list here: https://docs.python.org/3/library/hashlib.html#hashlib.md5
+        :type hash_format:          str
+        :param hex_val:             if false will return the object instead of the hex value (True by default)
+        :type hex_val:              bool
+        :return:                    hash of the file
+        :rtype:                     str | object
+        """
+        if file_name in self.file_list:
+            match File.get_extension(file_name):
+                case 'zip':
+                    return self[file_name].zip_hash(hash_format, hex_val)
+                case _:
+                    return getattr(hashlib, hash_format)(self.__raw_zip.read(file_name)).hexdigest() if hex_val \
+                    else getattr(hashlib, hash_format)(self.__raw_zip.read(file_name))
+        self.__raise(FileNotFound, file_name)
+
+    def zip_hash(self, hash_format='sha256', hex_val=True):
+        """
+        returns the hash of the zip data
+        :param hash_format:         hash library to use (sha256 by default).
+                                    list here: https://docs.python.org/3/library/hashlib.html#hashlib.md5
+        :type hash_format:          str
+        :param hex_val:             if false will return the object instead of the hex value (True by default)
+        :type hex_val:              bool
+        :return:                    hash value
+        :rtype:                     str | object
+        """
+        hash_list = {file_name: self.file_hash(file_name, hash_format=hash_format) for file_name in self.file_list}
+        return getattr(hashlib, hash_format)(str(hash_list).encode()).hexdigest() if hex_val \
+            else getattr(hashlib, hash_format)(str(hash_list).encode())
+
+    def get_creation_datetime(self, file_name):
+        """
+        returns the creation datetime of a file
+
+        :param file_name:       name to get datetime object for
+        :type file_name:        str
+        :return:                datetime object representing the creation time of the file
+        :rtype:                 datetime
+        """
+        return self.__metadata[file_name].creation_datetime if file_name in self.file_list \
+            else self.__raise(FileNotFound, file_name)
 
     def get_size(self, file_name=None, compressed=False):
         """
@@ -76,7 +178,7 @@ class ZipFolder:
         match file_name:
             case str():
                 if file_name in self.file_list:
-                    return getattr(self.__raw_zip.getinfo(file_name), 'compress_size' if compressed else 'file_size')
+                    return getattr(self.__metadata[file_name], 'compress_size' if compressed else 'size')
                 self.__raise(FileNotFound, file_name)
             case _:
                 for file in self.__raw_zip.filelist:
@@ -86,15 +188,37 @@ class ZipFolder:
     def get(self, file_name):
         """
         used to get the data of a specific file.
-        if file not in zip, this will return null instead.
+        if the file not in the ZipFolder, this will return None instead.
 
         :param file_name:       file name (if inside a folder add 'folder_name/' before the file name)
         :type file_name:        str
-        :return:
+        :return:                file data
+        :rtype:                 bytes | str | dict | ZipFolder
         """
+        return self[file_name] if file_name in self.file_list else None
+
+    def create_directory(self, directory_name, directory_path=''):
+        """
+        creates a directory at the specified path
+
+        :param directory_name:          name of the new directory
+        :type directory_name:           str
+        :param directory_path:          path to save the directory to (root of ZipFolder by default)
+        :type directory_path:           str
+        """
+        self.__change_mode('w')
+        self.__raw_zip.writestr(ZipInfo(f'{directory_path}'
+                                        f'{"/" if directory_path else ""}'
+                                        f'{directory_name}/'), '')
+        self.__change_mode('r')
+
+    def add_file(self, file_name, file_data):
         if file_name in self.file_list:
-            return File.unpack(file_name, self.__raw_zip.open(file_name).read())
-        return None
+            self.__raise(FileNameConflict, file_name)
+        self.__change_mode('w')
+        self.__raw_zip.writestr(file_name, File.pack(file_name, file_data))
+        self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
+        self.__change_mode('r')
 
     def add_files(self, data):
         """
@@ -102,21 +226,22 @@ class ZipFolder:
         you can add folders by adding the folder name before the filename separated by a '/'.
 
         :param data:            dict of filename as key and data as value
-        :type data:             dict[str, dict] | dict[str, str] | dict[str, bytes]| set[str]
+        :type data:             dict[str, dict] | dict[str, str] | dict[str, bytes]
+                                | dict[str, ZipFolder] | set[str]
         """
+        if temp := [file for file in data if file in self.file_list]:
+            self.__raise(FileNameConflict, temp[0])
         match data:
             case dict():
-                for file in data.keys():
-                    if file in self.file_list:
-                        self.__raise(FileNameConflict, file)
-                self.__raw_zip = self.__create_zip(dict(self.raw_files(), **data))
+                for file in data:
+                    self.add_file(file, data[file])
             case set():
                 for file in data:
-                    if file in self.file_list:
-                        self.__raise(FileNameConflict, file)
-                self.__raw_zip = self.__create_zip(dict(self.raw_files(), **self.__create_base_dict(data)))
+                    self.add_file(file, File.create_base(File.get_extension(file)))
+            case list():
+                self.__raise(UnsupportedOption, 'add_files with list')
 
-    def update(self, file_name, new_data):
+    def update_file(self, file_name, new_data):
         """
         updates file data, this can also be used to add files
 
@@ -125,7 +250,15 @@ class ZipFolder:
         :param new_data:       new data for the updated files
         :type file_name:        str | bytes | dict | list
         """
-        self.__raw_zip = self.__create_zip(dict(self.raw_files(), **{file_name: new_data}))
+        if file_name in self.file_list:
+            temp = self.__metadata[file_name].creation_datetime
+            self.delete_file(file_name)
+            self.add_file(file_name, new_data)
+            self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
+            self.__metadata[file_name].creation_datetime = temp
+            del temp
+        else:
+            self.__raise(FileNotFound, file_name)
 
     def update_files(self, update_dict):
         """
@@ -135,7 +268,10 @@ class ZipFolder:
         :param update_dict:       name of file to update
         :type update_dict:        dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder]
         """
-        self.__raw_zip = self.__create_zip(dict(self.raw_files(), **update_dict))
+        if temp:=[file for file in update_dict.keys() if file not in self.file_list]:
+            self.__raise(FileNotFound, temp[0])
+        for file, new_data in update_dict.items():
+            self.update_file(file, new_data)
 
     def change_name(self, old_name, new_name):
         """
@@ -149,9 +285,12 @@ class ZipFolder:
         """
         if old_name not in self.file_list:
             self.__raise(FileNotFound, old_name)
-        temp = self.raw_files()
-        temp[new_name] = temp.pop(old_name)
-        self.__raw_zip = self.__create_zip(temp)
+        if old_name != new_name:
+            self.__raw_zip.getinfo(old_name).filename = new_name
+            self.__metadata[new_name] = self.__metadata.pop(old_name)
+            self.__raw_zip.NameToInfo[new_name] = self.__raw_zip.NameToInfo.pop(old_name)
+        else:
+            self.__log('How did we get here?')
 
     def delete_file(self, file_name):
         """
@@ -159,11 +298,13 @@ class ZipFolder:
 
         :param file_name:            file name (if inside a folder add 'folder_name/' before the file name)
         :type file_name:             str
-        :return:                    success status of the deletion (file not found will return False)
-        :rtype:                     bool
+        :return:                     success status of the deletion (file not found will return False)
+        :rtype:                      bool
         """
-        if file_name in self.file_list:
-            self.__raw_zip = self.__edit_zip([file for file in self.file_list if file != file_name])
+        if (file_name in self.file_list) and (temp:=[f for f in self.__raw_zip.filelist if f.filename == file_name]):
+            self.__raw_zip.filelist.remove(temp[0])
+            del self.__raw_zip.NameToInfo[file_name]
+            del self.__metadata[file_name]
             return True
         return False
 
@@ -171,16 +312,16 @@ class ZipFolder:
         """
         deletes files from the zip file.
 
-        :param file_names:            list of file names (if inside a folder add 'folder_name/' before the file name)
-        :type file_names:             list[str]
-        :return:                      list of success status of the deletion (file not found will return False)
-        :rtype:                       list[bool]
+        :param file_names:            set of file names (if inside a folder add 'folder_name/' before the file name)
+        :type file_names:             set[str]
+        :return:                      dict of file names and of success status of the deletion
+                                      (file not found will return False)
+        :rtype:                       dict[str, bool]
         """
-        if len(file_names) != len(set(file_names)):
-            self.__raise(DuplicateFile)
-        temp = [file in self.file_list for file in file_names]
-        self.__raw_zip = self.__edit_zip([file for file in self.file_list if file not in file_names])
-        return temp
+        if type(file_names) is list:
+            self.__log('Warning: usage of list type for delete_files'
+                       ' is deprecated as of version 0.5.0')
+        return {file: self.delete_file(file) for file in file_names}
 
     def raw_files(self):
         """
@@ -188,12 +329,19 @@ class ZipFolder:
         :return:    A dict of all files as name, data pairs.
         :rtype:      dict
         """
-        return {file: File.unpack(file, self.__raw_zip.open(file).read())
-                for file in self.file_list}
+        return {file: self[file] for file in self.file_list}
 
     @property
     def file_list(self):
         return [file.filename for file in self.__raw_zip.filelist]
+
+    @property
+    def metadata(self):
+        return self.__metadata.copy()
+
+    @metadata.setter
+    def metadata(self, _value):
+        self.__raise(UnsupportedOption, 'set metadata')
 
     def get_b64(self):
         """
@@ -216,35 +364,34 @@ class ZipFolder:
         :return:        the bytes of the zip
         :rtype:         bytes
         """
-        return self.__edit_zip(byte=True).read()
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
+            for file_name in self.file_list:
+                file_zip.writestr(file_name, data=File.pack(file_name, self[file_name]))
+        zip_buffer.seek(0)
+        return zip_buffer.read()
 
     def __check_class(self, other):
         if type(self) is not type(other):
             self.__raise(ExternalClassOperation, type(other))
 
+    def __change_mode(self, mode):
+        self.__raw_zip.mode = mode
+
     def __create_zip(self, files):
+        if '' in files:
+            self.__raise(EmptyFileName)
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
             for file_name, data in files.items():
-                if not file_name:
-                    self.__raise(EmptyFileName)
                 try:
-                    file_zip.writestr(f'{file_name}', data=File.pack(file_name, data))
+                    file_zip.writestr(file_name, data=File.pack(file_name, data))
+                    self.__metadata[file_name] = MetaData(file_zip.getinfo(file_name))
                 except (UnicodeDecodeError, JSONDecodeError):
                     self.__raise(BytesDecodeError, file_name)
 
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r')
-
-    def __edit_zip(self, files=None, byte=False):
-        if files is None:
-            files = self.file_list
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
-            for file_name in files:
-                file_zip.writestr(f'{file_name}', data=File.pack(file_name, self[file_name]))
-        zip_buffer.seek(0)
-        return zipfile.ZipFile(zip_buffer, 'r') if not byte else zip_buffer
 
     @staticmethod
     def __create_base_dict(names):
@@ -262,8 +409,18 @@ class ZipFolder:
         except (binascii.Error, zipfile.BadZipfile):
             self.__raise(Base64DecodingError)
 
-    def __raise(self, exc, *args, **kwargs):
+    @staticmethod
+    def __log(msg, level='warning'):
+        getattr(logging.getLogger('zipmanager'), level)(msg)
+
+    @staticmethod
+    def __raise(exc, *args, **kwargs):
         raise exc(*args, **kwargs) from None
+
+    @staticmethod
+    def __save(path, data):
+        with open(path, 'wb' if type(data) is bytes else 'w') as fh:
+            fh.write(data)
 
     def save(self, path_with_name='./temp.zip'):
         """
@@ -272,5 +429,13 @@ class ZipFolder:
         :param path_with_name:      path for save location (empty will save it to current folder)
         :type path_with_name:       str
         """
-        with open(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', 'wb') as zfh:
-            zfh.write(self.get_bytes())
+        self.__save(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', self.get_bytes())
+
+    def save_file(self, file_name, path=None):
+        """
+        :param file_name:       file name to be saved
+        :type file_name:        str
+        :param path:            path to be saved to (./file_name by default)
+        :type path:             str
+        """
+        self.__save(path if path else f'./{file_name}', self[file_name])

@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import re
+from datetime import datetime
 
 from .Exceptions import NonBytesInput, PathNotFound, ZipDecodeError
 
@@ -89,6 +90,14 @@ class File:
                 or
                 re.search(r'^(C:|\./|/)(/?[a-zA-Z0-9]+)+(\.[a-zA-Z0-9]*)$', txt)
         )
+
+
+class MetaData:
+    def __init__(self, z_info):
+        self.creation_datetime = datetime(*z_info.date_time)
+        self.size = z_info.file_size
+        self.compress_size = z_info.compress_size
+        self.original_filename = z_info.filename
 
 
 create_base = File.create_base
