@@ -2,21 +2,23 @@ import binascii
 import hashlib
 import io
 import logging
+import re
 import zipfile
 import base64
 from json.decoder import JSONDecodeError
 from contextlib import redirect_stdout
-from zipfile import ZipInfo
 
 from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
                          Base64DecodingError, EmptyFileName, ZipDecodeError,
-                         UnsupportedOption)
+                         UnsupportedOption, FormatError)
 from .File import File, MetaData
 
 
 class ZipFolder:
-
+    """
+    The ZipFolder object holds all the files and data as a zip.
+    """
     def __init__(self, data):
         """
         the data for the zip can be one of the following:
@@ -66,10 +68,34 @@ class ZipFolder:
             self.update_file(key, ZipFolder(value))
 
     def __str__(self):
-        return (f'Zipfile Object {hex(id(self)).upper()} / '
-                f'file number: {len(self.file_list)} / '
-                f'size: {self.get_size():,} bytes / '
-                f'compressed size: {self.get_size(compressed=True):,} bytes')
+        return (f'Zipfile Object {self:id} / '
+                f'file number: {self:nfiles} / '
+                f'size: {self:,size} bytes / '
+                f'compressed size: {self:,csize} bytes')
+
+    def __format__(self, format_spec: str):
+        match re.sub(r'[ ,]', '', format_spec):
+            case 'id':
+                txt = str(hex(id(self)).upper())
+                format_spec = format_spec.replace('id', '')
+            case 'size':
+                txt = self.get_size()
+                format_spec = format_spec.replace('size', '')
+            case 'csize' | 'c_size':
+                txt = self.get_size(compressed=True)
+                format_spec = re.sub(r'(csize|c_size)', '', format_spec)
+            case 'nfiles' | 'n_files':
+                txt = len(self.file_list)
+                format_spec = re.sub(r'(nfiles|n_files)', '', format_spec)
+            case 'files':
+                txt = str(self.file_list)[1:-1]
+                format_spec = format_spec.replace('files', '')
+            case _:
+                txt = str(self)
+        try:
+            return format(txt, format_spec)
+        except (TypeError ,ValueError):
+            self.__raise(FormatError, format_spec)
 
     def set_comment(self, comment, file_name=None):
         """
@@ -207,7 +233,7 @@ class ZipFolder:
         :type directory_path:           str
         """
         self.__change_mode('w')
-        self.__raw_zip.writestr(ZipInfo(f'{directory_path}'
+        self.__raw_zip.writestr(zipfile.ZipInfo(f'{directory_path}'
                                         f'{"/" if directory_path else ""}'
                                         f'{directory_name}/'), '')
         self.__change_mode('r')
@@ -248,13 +274,12 @@ class ZipFolder:
         :param file_name:       name of file to update
         :type file_name:        str
         :param new_data:       new data for the updated files
-        :type file_name:        str | bytes | dict | list
+        :type new_data:        str | bytes | dict | list
         """
         if file_name in self.file_list:
             temp = self.__metadata[file_name].creation_datetime
             self.delete_file(file_name)
             self.add_file(file_name, new_data)
-            self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
             self.__metadata[file_name].creation_datetime = temp
             del temp
         else:

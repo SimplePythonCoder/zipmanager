@@ -6,9 +6,13 @@ import re
 from datetime import datetime
 
 from .Exceptions import NonBytesInput, PathNotFound, ZipDecodeError
+from .files import Markdown
 
 
 class File:
+    """
+    used for file specific functions.
+    """
     zipmanager = importlib.import_module(".main", 'zipmanager')
 
     @staticmethod
@@ -22,17 +26,19 @@ class File:
     @classmethod
     def create_base(cls, extension=None):
         """
+        used to create base file for a given extension
+
         :param extension:       extension name
         :type extension:        str
         :return:                a base file to use for the given file type
         """
         match extension:
+            case 'txt' | 'py' | 'md':
+                return ''
             case 'json':
                 return {}
             case 'list':
                 return []
-            case 'txt' | 'py':
-                return ''
             case 'zip':
                 return cls.zipmanager.ZipFolder({}).get_bytes()
             case 'html':
@@ -51,7 +57,7 @@ class File:
         match name.split('.')[-1]:
             case 'json':
                 return json.dumps(json.loads(data)) if type(data) is bytes else json.dumps(data)
-            case 'txt' | 'py' | 'html':
+            case 'txt' | 'py' | 'html' | 'md':
                 return data.decode() if type(data) is bytes \
                     else data if type(data) is str \
                     else cls.__raise(NonBytesInput, name)
@@ -71,10 +77,13 @@ class File:
                 return json.loads(data)
             case 'txt' | 'py' | 'html':
                 return data.decode() if type(data) is bytes else data
+            case 'md':
+                return Markdown(data.decode())
             case 'zip':
                 return cls.zipmanager.ZipFolder(data)
             case _:
                 return data
+
 
     @classmethod
     def open_file(cls, file_path):
@@ -93,6 +102,9 @@ class File:
 
 
 class MetaData:
+    """
+    A simple metadata object for extra data
+    """
     def __init__(self, z_info):
         self.creation_datetime = datetime(*z_info.date_time)
         self.size = z_info.file_size

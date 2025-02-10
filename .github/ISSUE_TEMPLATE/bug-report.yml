@@ -15,6 +15,13 @@ body:
       description: What version of zipmanager did you encounter the bug?
       options:
         - Latest
+        - 0.5.1
+        - 0.5.0
+        - 0.4.0
+        - 0.3.2
+        - 0.3.1
+        - 0.3.0
+        - 0.2.1
         - 0.2.0
         - 0.1.0
       default: 0
@@ -32,4 +39,4 @@ body:
     id: free-text
     attributes:
       label: What happened?
-      description: Describe the bug here
+      description: Describe the bug here, include steps to reproduce the bug

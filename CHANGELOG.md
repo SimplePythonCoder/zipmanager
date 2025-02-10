@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.1](https://pypi.org/project/zipmanager/0.5.1/) - 2025-02-10
+
+Added:
+- formats
+- support for markdown
+- str for markdown will have the functions md and print_md
+
+Bug fixes:
+- general bug fixes and removal of unnecessary lines
+
 ## [0.5.0](https://pypi.org/project/zipmanager/0.5.0/) - 2024-11-15
 
 Added:

@@ -53,3 +53,11 @@ class PathNotFound(Exception):
 class UnsupportedOption(Exception):
     def __init__(self, option):
         super().__init__(f"option '{option}' is not supported")
+
+
+class FormatError(Exception):
+    def __init__(self, format_):
+        if ' ' in format_:
+            super().__init__(f"Space not allowed in string format")
+        else:
+            super().__init__(f"Invalid format string '{format_}'")
