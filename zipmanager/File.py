@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 
 from .Exceptions import NonBytesInput, PathNotFound, ZipDecodeError
-from .files import Markdown
+from .files import Markdown, CSV
 
 
 class File:
@@ -45,6 +45,8 @@ class File:
                 return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    '
                         '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n    '
                         '<title></title>\n</head>\n<body>\n\n</body>\n</html>')
+            case 'java':
+                return 'public static void main(String[] args){\n\n}'
             case _:
                 return b''
 
@@ -57,10 +59,18 @@ class File:
         match name.split('.')[-1]:
             case 'json':
                 return json.dumps(json.loads(data)) if type(data) is bytes else json.dumps(data)
-            case 'txt' | 'py' | 'html' | 'md':
+            case 'txt' | 'py' | 'html' | 'java':
                 return data.decode() if type(data) is bytes \
                     else data if type(data) is str \
                     else cls.__raise(NonBytesInput, name)
+            case  'md':
+                return data if type(data) in [str, bytes] \
+                else data.encoded if data.__class__.__name__ == 'Markdown'\
+                else cls.__raise(NonBytesInput, name)
+            case  'csv':
+                return data if type(data) in [str, bytes] \
+                else data.encoded if data.__class__.__name__ == 'CSV'\
+                else cls.__raise(NonBytesInput, name)
             case 'zip':
                 return data if type(data) is bytes and cls.zipmanager.ZipFolder(data) \
                     else data.get_bytes() if data.__class__.__name__ == 'ZipFolder' \
@@ -75,10 +85,12 @@ class File:
         match name.split('.')[-1]:
             case 'json':
                 return json.loads(data)
-            case 'txt' | 'py' | 'html':
+            case 'txt' | 'py' | 'html' | 'java':
                 return data.decode() if type(data) is bytes else data
             case 'md':
-                return Markdown(data.decode())
+                return Markdown(data)
+            case 'csv':
+                return CSV(data)
             case 'zip':
                 return cls.zipmanager.ZipFolder(data)
             case _:

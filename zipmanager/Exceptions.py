@@ -61,3 +61,7 @@ class FormatError(Exception):
             super().__init__(f"Space not allowed in string format")
         else:
             super().__init__(f"Invalid format string '{format_}'")
+
+class UnknownRowOrColumn(Exception):
+    def __init__(self):
+        super().__init__('Invalid column or row')

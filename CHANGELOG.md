@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2](https://pypi.org/project/zipmanager/0.5.2/) - 2025-02-10
+
+Added:
+- support for java and csv files
+- \_\_setitem\_\_ (x[y]=z) can now add new files
+
+Bug fixes:
+- fixed markdown error when creating bytes
+
 ## [0.5.1](https://pypi.org/project/zipmanager/0.5.1/) - 2025-02-10
 
 Added:

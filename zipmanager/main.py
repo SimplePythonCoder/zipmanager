@@ -62,7 +62,9 @@ class ZipFolder:
         self.__raise(FileNotFound, file_name)
 
     def __setitem__(self, key, value):
-        if File.get_extension(key) != 'zip':
+        if key not in self.file_list:
+            self.add_file(key, value)
+        elif File.get_extension(key) != 'zip':
             self.update_file(key, value) if key in self.file_list else self.add_file(key, value)
         elif type(value) in [list, set, str, dict, bytes]:
             self.update_file(key, ZipFolder(value))
@@ -274,7 +276,7 @@ class ZipFolder:
         :param file_name:       name of file to update
         :type file_name:        str
         :param new_data:       new data for the updated files
-        :type new_data:        str | bytes | dict | list
+        :type new_data:        str | bytes | dict | list | ZipFolder
         """
         if file_name in self.file_list:
             temp = self.__metadata[file_name].creation_datetime
