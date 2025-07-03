@@ -1,10 +1,29 @@
 # Changelog
 
-## [0.5.2](https://pypi.org/project/zipmanager/0.5.2/) - 2025-02-10
+## [0.6.0](https://pypi.org/project/zipmanager/0.6.0/) - 2025-07-03
+
+Added:
+- \_\_and__ (as a & b) returns a ZipFolder with all the files that are in both ZipFolder object (Intersection)
+- \_\_or__ (as a | b) returns a ZipFolder with all the files that are unique to either ZipFolder object (Symmetric difference)
+- \_\_sub__ (as a - b) returns a ZipFolder with files from the first Zipfolder that are not in the second Zipfolder.
+- \_\_lshift__ (as a << b) will **copy** all files in other (b) into self (a).
+- added safe save that will return an error if the file already exists for both the entire zip and single files.
+- added is_folder property to metadata object.
+- added `print_csv` to print a csv file as a table.
+
+Updated:
+- \_\_add__ (as a + b) will now return a new ZipFolder object.
+- markdown functionality and change from `\u001b` to `\033`.
+- zipmanager now uses the pyproject.toml instead of setup (it shouldn't affect the installation).
+
+Bug fixes:
+- `.csv` files will now use the builtin csv.
+
+## [0.5.2](https://pypi.org/project/zipmanager/0.5.2/) - 2025-03-19
 
 Added:
 - support for java and csv files
-- \_\_setitem\_\_ (x[y]=z) can now add new files
+- \_\_setitem__ (x[y]=z) can now add new files
 
 Bug fixes:
 - fixed markdown error when creating bytes
@@ -27,7 +46,7 @@ Added:
 - print_zip function to list all files and extra data
 - get_creation_datetime to get the file creation time
 - create_directory to create empty directories
-- \__setitem\__ (using object['name'] = data)
+- \_\_setitem__ (using object['name'] = data)
 - save_file to save a specific file
 
 Updated:

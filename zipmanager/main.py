@@ -1,6 +1,7 @@
 import binascii
 import hashlib
 import io
+from os import path as p
 import logging
 import re
 import zipfile
@@ -11,7 +12,7 @@ from contextlib import redirect_stdout
 from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
                          Base64DecodingError, EmptyFileName, ZipDecodeError,
-                         UnsupportedOption, FormatError)
+                         UnsupportedOption, FormatError, FileAlreadyExists)
 from .File import File, MetaData
 
 
@@ -53,13 +54,57 @@ class ZipFolder:
 
     def __add__(self, other):
         self.__check_class(other)
-        self.add_files(other.raw_files())
-        return self
+        temp = ZipFolder(self.raw_files())
+        for f in other.file_list:
+            if f not in temp.file_list:
+                temp.add_file(f, other[f])
+        return temp
+
+    def __sub__(self, other):
+        self.__check_class(other)
+        temp = ZipFolder(self.raw_files())
+        for f in self.file_list:
+            if f in other.file_list and self[f] == other[f]:
+                temp.delete_file(f)
+        return temp
+
+    def __and__(self, other):
+        """
+        Returns all files that are in both ZipFile objects.
+        :type other: ZipFolder
+        """
+        self.__check_class(other)
+        temp = ZipFolder({})
+        for f in self.file_list:
+            if f in other.file_list and self[f] == other[f]:
+                temp.add_files({f: self[f]})
+        return temp
+
+    def __or__(self, other):
+        """
+        Returns all files that are in both ZipFile objects.
+        :type other: ZipFolder
+        """
+        self.__check_class(other)
+        temp = ZipFolder({})
+        for f in self.file_list:
+            if not (f in other.file_list and self[f] == other[f]) and f not in temp.file_list:
+                temp.add_files({f: self[f]})
+        for f in other.file_list:
+            if not (f in self.file_list and self[f] == other[f]) and f not in temp.file_list:
+                temp.add_files({f: other[f]})
+        return temp
+
+    def __lshift__(self, other):
+        self.__check_class(other)
+        for file in other.file_list:
+            self.add_file(file, other[file])
 
     def __getitem__(self, file_name: str):
         if file_name in self.file_list:
             return File.unpack(file_name, self.__raw_zip.open(file_name).read())
         self.__raise(FileNotFound, file_name)
+        return None
 
     def __setitem__(self, key, value):
         if key not in self.file_list:
@@ -98,6 +143,7 @@ class ZipFolder:
             return format(txt, format_spec)
         except (TypeError ,ValueError):
             self.__raise(FormatError, format_spec)
+            return None
 
     def set_comment(self, comment, file_name=None):
         """
@@ -129,6 +175,7 @@ class ZipFolder:
             return self.__raw_zip.getinfo(file_name).comment.decode() if self.__raw_zip.getinfo(file_name).comment else None
         else:
             self.__raise(FileNotFound, file_name)
+            return None
 
     def print_zip(self):
         """
@@ -162,6 +209,7 @@ class ZipFolder:
                     return getattr(hashlib, hash_format)(self.__raw_zip.read(file_name)).hexdigest() if hex_val \
                     else getattr(hashlib, hash_format)(self.__raw_zip.read(file_name))
         self.__raise(FileNotFound, file_name)
+        return None
 
     def zip_hash(self, hash_format='sha256', hex_val=True):
         """
@@ -315,6 +363,7 @@ class ZipFolder:
         if old_name != new_name:
             self.__raw_zip.getinfo(old_name).filename = new_name
             self.__metadata[new_name] = self.__metadata.pop(old_name)
+            self.__metadata[new_name].name = new_name
             self.__raw_zip.NameToInfo[new_name] = self.__raw_zip.NameToInfo.pop(old_name)
         else:
             self.__log('How did we get here?')
@@ -429,12 +478,14 @@ class ZipFolder:
             return zipfile.ZipFile(io.BytesIO(data), 'r')
         except zipfile.BadZipfile:
             self.__raise(ZipDecodeError)
+            return None
 
     def __b64_to_zip(self, data):
         try:
             return zipfile.ZipFile(io.BytesIO(base64.b64decode(data)), 'r')
         except (binascii.Error, zipfile.BadZipfile):
             self.__raise(Base64DecodingError)
+            return None
 
     @staticmethod
     def __log(msg, level='warning'):
@@ -458,11 +509,37 @@ class ZipFolder:
         """
         self.__save(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', self.get_bytes())
 
-    def save_file(self, file_name, path=None):
+    def safe_save(self, path_with_name='./temp.zip'):
+        """
+        saves the zip folder to the given location.
+        will fail if file already exists.
+        path must be with name (extension optional).
+        :param path_with_name:      path for save location (empty will save it to current folder)
+        :type path_with_name:       str
+        """
+        if p.exists(path_with_name):
+            self.__raise(FileAlreadyExists, path_with_name)
+        self.save(path_with_name)
+
+    def save_file(self, file_name, path_with_name=None):
         """
         :param file_name:       file name to be saved
         :type file_name:        str
-        :param path:            path to be saved to (./file_name by default)
-        :type path:             str
+        :param path_with_name:            path to be saved to (./file_name by default)
+        :type path_with_name:             str
         """
-        self.__save(path if path else f'./{file_name}', self[file_name])
+        self.__save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
+
+    def safe_save_file(self, file_name, path_with_name=None):
+        """
+        :param file_name:               file name to be saved
+        :type file_name:                str
+        :param path_with_name:          path to be saved to (./file_name by default)
+        :type path_with_name:           str
+        """
+        if type(path_with_name) is str and p.exists(path_with_name):
+            self.__raise(FileAlreadyExists, path_with_name)
+        elif p.exists(f'./{file_name}'):
+            self.__raise(FileAlreadyExists, f'./{file_name}')
+        self.__save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
+

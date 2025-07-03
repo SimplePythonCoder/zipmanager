@@ -1,6 +1,33 @@
 [build-system]
-requires = [
-    "setuptools>=69.2.0",
-    "wheel",
-]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "zipmanager"
+version = "0.6.0"
+description = "Allows you to manage zip folders as data"
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "SimplePythonCoder"}
+]
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'Programming Language :: Python :: 3.11',
+        'Operating System :: Microsoft :: Windows :: Windows 10',
+        'Topic :: Utilities',
+]
+keywords = ['zip', 'zipfile']
+
+[project.urls]
+Homepage = 'https://github.com/SimplePythonCoder/zipmanager'
+Source = 'https://github.com/SimplePythonCoder/zipmanager'
+Changelog = 'https://github.com/SimplePythonCoder/zipmanager/blob/main/CHANGELOG.md'
+Documentation = 'https://github.com/SimplePythonCoder/zipmanager/wiki'
+Issues = 'https://github.com/SimplePythonCoder/zipmanager/issues'
+
+[tool.setuptools.packages.find]
+include = ["zipmanager*"]

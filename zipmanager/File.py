@@ -118,10 +118,15 @@ class MetaData:
     A simple metadata object for extra data
     """
     def __init__(self, z_info):
+        self.name = z_info.filename
         self.creation_datetime = datetime(*z_info.date_time)
         self.size = z_info.file_size
         self.compress_size = z_info.compress_size
         self.original_filename = z_info.filename
+
+    @property
+    def is_folder(self):
+        return bool(re.search(r'^(.+/)+$', self.name))
 
 
 create_base = File.create_base

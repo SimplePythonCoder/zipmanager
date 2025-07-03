@@ -62,6 +62,12 @@ class FormatError(Exception):
         else:
             super().__init__(f"Invalid format string '{format_}'")
 
+
 class UnknownRowOrColumn(Exception):
     def __init__(self):
-        super().__init__('Invalid column or row')
+        super().__init__('Invalid row or column')
+
+
+class FileAlreadyExists(Exception):
+    def __init__(self, file_name):
+        super().__init__(f'File "{file_name}" already exists in the specified path')
