@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.1](https://pypi.org/project/zipmanager/0.6.1/) - 2025-09-28
+
+Added:
+- experimental features, you can use the experimental_info function to print a list of them.
+- experimental feature that deletes redundant paths in the file_list and the raw zip object.
+- wiki function (`from zipmanager import wiki`) will print the docs/wiki url.
+
+Bug fixes:
+- fixed some bugs that caused the metadata to not be created.
+- fixed issue with create_directory that will allow to create the same directory more than once.
+
 ## [0.6.0](https://pypi.org/project/zipmanager/0.6.0/) - 2025-07-03
 
 Added:

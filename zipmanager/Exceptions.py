@@ -20,6 +20,11 @@ class FileNameConflict(Exception):
         super().__init__(f'File "{file_name}" already exists in the zip folder')
 
 
+class FolderNameConflict(Exception):
+    def __init__(self, folder_name):
+        super().__init__(f'Folder "{folder_name}/" already exists in the zip folder')
+
+
 class FileNotFound(Exception):
     def __init__(self, file_name):
         super().__init__(f'File "{file_name}" does not exist in the zip folder')
@@ -71,3 +76,8 @@ class UnknownRowOrColumn(Exception):
 class FileAlreadyExists(Exception):
     def __init__(self, file_name):
         super().__init__(f'File "{file_name}" already exists in the specified path')
+
+
+class UnsupportedValueType(Exception):
+    def __init__(self, data):
+        super().__init__(f'The given data "{data}" is not supported as a value')

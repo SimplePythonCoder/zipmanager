@@ -38,28 +38,5 @@ zip_folder['file_name']
 zip_folder.save() # saves zip in given location (empty is './temp.zip')
 ```
 
-## File extension features
-json and text files data is automatically returned as a dict or str respectively:
-```python
-from zipmanager import ZipFolder
-
-file_data = b'{"key": "value"}'
-
-zip_folder = ZipFolder({'file_name.json': file_data})
-# .json extension is required to return a dict/list/str
-
-data = zip_folder['file_name.json'] # returns a dict/list/str type
-
-# same for .txt
-file_data = b'text file data'
-zip_folder = ZipFolder({'file_name.txt': file_data})
-data = zip_folder['file_name.txt'] # returns a string
-```
-new in version 0.2.0 - files with the zip extension will return a ZipFolder object:
-```python
-from zipmanager import ZipFolder
-
-zip_data = b'some zip data'
-zip_folder = ZipFolder({'file_name.zip': zip_data})
-data = zip_folder['file_name.zip'] # returns a ZipFolder object
-```
+## Features
+info on more of the features is available on the [wiki](https://github.com/SimplePythonCoder/zipmanager/wiki)

@@ -1,7 +1,7 @@
 import binascii
 import hashlib
 import io
-from os import path as p
+from os import path
 import logging
 import re
 import zipfile
@@ -12,7 +12,8 @@ from contextlib import redirect_stdout
 from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
                          Base64DecodingError, EmptyFileName, ZipDecodeError,
-                         UnsupportedOption, FormatError, FileAlreadyExists)
+                         UnsupportedOption, FormatError, FileAlreadyExists,
+                         FolderNameConflict, UnsupportedValueType)
 from .File import File, MetaData
 
 
@@ -20,7 +21,7 @@ class ZipFolder:
     """
     The ZipFolder object holds all the files and data as a zip.
     """
-    def __init__(self, data):
+    def __init__(self, data, experimental=False):
         """
         the data for the zip can be one of the following:
 
@@ -33,8 +34,11 @@ class ZipFolder:
         :param data:                the data for the zip
         :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder] |
                                     set[str] | str | bytes
+        :param experimental:        used for testing experimental features, False by default.
+        :type experimental:         bool
         """
         self.__metadata = {}
+        self.experimental = experimental
         match data:
             case dict():
                 self.__raw_zip = self.__create_zip(data)
@@ -43,6 +47,7 @@ class ZipFolder:
             case str():
                 self.__raw_zip = self.__b64_to_zip(data) if not File.is_path(data) \
                     else self.__bytes_to_zip(File.open_file(data))
+                self.__add_metadata()
             case bytes():
                 self.__raw_zip = self.__bytes_to_zip(data)
             case _:
@@ -144,6 +149,17 @@ class ZipFolder:
         except (TypeError ,ValueError):
             self.__raise(FormatError, format_spec)
             return None
+
+    def experimental_info(self):
+        """
+        prints out current experimental features.
+        """
+        print(
+            f'Current list of experimental features:\n'
+            f'\t• automatic deletion of redundant paths in the file_list and the raw zip object'
+            f'\nexperimental features are currently {"enabled" if self.experimental else "disabled"}\n'
+            f'please submit bugs at: https://github.com/SimplePythonCoder/zipmanager/issues/new?template=bug-report.yml'
+              )
 
     def set_comment(self, comment, file_name=None):
         """
@@ -273,20 +289,52 @@ class ZipFolder:
         """
         return self[file_name] if file_name in self.file_list else None
 
-    def create_directory(self, directory_name, directory_path=''):
+    def __get_minimal_paths_list(self):
+        sorted_file_list = sorted(self.file_list)
+        final_list = []
+        for first_index in range(len(sorted_file_list)):
+            flag = True
+            if self.__metadata[sorted_file_list[first_index]].is_folder:
+                for second_index in range(first_index+1, len(sorted_file_list)):
+                    if sorted_file_list[second_index].startswith(sorted_file_list[first_index]):
+                        flag = False
+                        break
+            if flag:
+                final_list.append(sorted_file_list[first_index])
+
+        return final_list
+
+    def __refresh_file_list(self):
+        """
+        currently only used in experimental mode
+        """
+        new_file_list = self.__get_minimal_paths_list()
+        for f in self.file_list:
+            if f not in new_file_list:
+                self.delete_file(f)
+
+    def __add_metadata(self):
+        for file_name in self.file_list:
+            self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
+
+    def create_directory(self, directory):
         """
         creates a directory at the specified path
 
-        :param directory_name:          name of the new directory
-        :type directory_name:           str
-        :param directory_path:          path to save the directory to (root of ZipFolder by default)
-        :type directory_path:           str
+        :param directory:          name and where the directory should be located.
+        :type directory:           str
         """
+        if directory.endswith('/'):
+            directory = directory[:-1]
+        if f'{directory}/' in self.file_list:
+            self.__raise(FolderNameConflict, directory)
+            return
         self.__change_mode('w')
-        self.__raw_zip.writestr(zipfile.ZipInfo(f'{directory_path}'
-                                        f'{"/" if directory_path else ""}'
-                                        f'{directory_name}/'), '')
+        self.__raw_zip.writestr(zipfile.ZipInfo(directory+'/'), '')
+        self.__metadata[f'{directory}/'] = MetaData(self.__raw_zip.getinfo(f'{directory}/'))
         self.__change_mode('r')
+        if self.experimental:
+            self.__refresh_file_list()
 
     def add_file(self, file_name, file_data):
         if file_name in self.file_list:
@@ -295,6 +343,8 @@ class ZipFolder:
         self.__raw_zip.writestr(file_name, File.pack(file_name, file_data))
         self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
         self.__change_mode('r')
+        if self.experimental:
+            self.__refresh_file_list()
 
     def add_files(self, data):
         """
@@ -495,9 +545,10 @@ class ZipFolder:
     def __raise(exc, *args, **kwargs):
         raise exc(*args, **kwargs) from None
 
-    @staticmethod
-    def __save(path, data):
-        with open(path, 'wb' if type(data) is bytes else 'w') as fh:
+    def __save(self, path_with_name, data):
+        if type(path_with_name) is not str:
+            self.__raise(UnsupportedValueType, path_with_name)
+        with open(path_with_name, 'wb' if type(data) is bytes else 'w') as fh:
             fh.write(data)
 
     def save(self, path_with_name='./temp.zip'):
@@ -507,6 +558,8 @@ class ZipFolder:
         :param path_with_name:      path for save location (empty will save it to current folder)
         :type path_with_name:       str
         """
+        if type(path_with_name) is not str:
+            self.__raise(UnsupportedValueType, path_with_name)
         self.__save(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', self.get_bytes())
 
     def safe_save(self, path_with_name='./temp.zip'):
@@ -517,7 +570,7 @@ class ZipFolder:
         :param path_with_name:      path for save location (empty will save it to current folder)
         :type path_with_name:       str
         """
-        if p.exists(path_with_name):
+        if path.exists(path_with_name):
             self.__raise(FileAlreadyExists, path_with_name)
         self.save(path_with_name)
 
@@ -537,9 +590,9 @@ class ZipFolder:
         :param path_with_name:          path to be saved to (./file_name by default)
         :type path_with_name:           str
         """
-        if type(path_with_name) is str and p.exists(path_with_name):
+        if type(path_with_name) is str and path.exists(path_with_name):
             self.__raise(FileAlreadyExists, path_with_name)
-        elif p.exists(f'./{file_name}'):
+        elif path.exists(f'./{file_name}'):
             self.__raise(FileAlreadyExists, f'./{file_name}')
         self.__save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
 
