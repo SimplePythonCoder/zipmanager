@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.0](https://pypi.org/project/zipmanager/0.7.0/) - 2026-02-08
+
+Added:
+- `compression_method` variable on object creation, defaults to `DEFLATE` (what this project used until now)
+- the `print_structure` function prints a tree structure for the `ZipFolder` object.
+- the `ZipFolder` class now uses a setting dict with an accompanying property for each value (use the properties)
+- new export/import system to keep some extra metadata unique to the ZipFolder object in a JSON file
+- automatic creation of folders in initialization with a '/' at the end: 
+`ZipFolder({folder/})` or `ZipFolder({folder/: b''})`
+
+Updated:
+- the `UnsupportedValueType` error will now give the correct type at the end of the error messages
+- using the get function or `object[name]` with a folder will return `None`  
+
+Bug fixes:
+- fixed bug that would make the code not use the last `.`, so before the fix the extension for `.name.txt` would be `name`.
+
 ## [0.6.1](https://pypi.org/project/zipmanager/0.6.1/) - 2025-09-28
 
 Added:

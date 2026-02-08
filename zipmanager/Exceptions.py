@@ -1,4 +1,14 @@
 
+
+class UnknownCompressionMethod(Exception):
+    def __init__(self, method):
+        super().__init__(f'the compression method "{method}" is unknown')
+
+class DataNotFound(Exception):
+    def __init__(self, method):
+        super().__init__('no data was  found in the export file')
+
+
 class NonBytesInput(Exception):
     def __init__(self, file_name):
         super().__init__(f'File "{file_name}" data must be bytes')
@@ -79,5 +89,5 @@ class FileAlreadyExists(Exception):
 
 
 class UnsupportedValueType(Exception):
-    def __init__(self, data):
-        super().__init__(f'The given data "{data}" is not supported as a value')
+    def __init__(self, data, intended_type):
+        super().__init__(f'The given data "{data}" is not supported as a value ({intended_type})')

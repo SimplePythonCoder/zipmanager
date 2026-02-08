@@ -6,6 +6,8 @@ import logging
 import re
 import zipfile
 import base64
+from .paths import build_tree_dict, tree_from_dict
+from json import dump, load
 from json.decoder import JSONDecodeError
 from contextlib import redirect_stdout
 
@@ -13,7 +15,7 @@ from .Exceptions import (FileNameConflict, ExternalClassOperation,
                          FileNotFound, BytesDecodeError, UnsupportedDataType,
                          Base64DecodingError, EmptyFileName, ZipDecodeError,
                          UnsupportedOption, FormatError, FileAlreadyExists,
-                         FolderNameConflict, UnsupportedValueType)
+                         FolderNameConflict, UnsupportedValueType, DataNotFound)
 from .File import File, MetaData
 
 
@@ -21,15 +23,23 @@ class ZipFolder:
     """
     The ZipFolder object holds all the files and data as a zip.
     """
-    def __init__(self, data, experimental=False):
+
+    compression_options = {
+        'STORED': zipfile.ZIP_STORED,
+        'DEFLATED': zipfile.ZIP_DEFLATED,
+        'BZIP2': zipfile.ZIP_BZIP2,
+        'LZMA': zipfile.ZIP_LZMA
+    }
+
+    def __init__(self, data, experimental=False, compression_method=zipfile.ZIP_DEFLATED):
         """
         the data for the zip can be one of the following:
 
-        - dictionary of file names and file data pairs (file data can be bytes, str for .txt or dict/list for .json)
+        - dictionary of file names and file data pairs (file data can be bytes or other for supported extensions)
         - set of file names (will create a base file based on file extension)
-        - base64 str of a zip (from the get_b64 function)
+        - base64 str of a zip (from the 'get_b64' function)
         - path of the zip file (must have the .zip extension)
-        - zip bytes (from the get_bytes function)
+        - zip bytes (from the 'get_bytes' function)
 
         :param data:                the data for the zip
         :type data:                 dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder] |
@@ -37,8 +47,11 @@ class ZipFolder:
         :param experimental:        used for testing experimental features, False by default.
         :type experimental:         bool
         """
+        self.__settings = {
+            'experimental': experimental,
+            'compression_method': self.__get_compression(compression_method)
+        }
         self.__metadata = {}
-        self.experimental = experimental
         match data:
             case dict():
                 self.__raw_zip = self.__create_zip(data)
@@ -75,7 +88,7 @@ class ZipFolder:
 
     def __and__(self, other):
         """
-        Returns all files that are in both ZipFile objects.
+        Returns all files that are in both ZipFolder objects.
         :type other: ZipFolder
         """
         self.__check_class(other)
@@ -87,7 +100,7 @@ class ZipFolder:
 
     def __or__(self, other):
         """
-        Returns all files that are in both ZipFile objects.
+        Returns all files that are in both ZipFolder objects.
         :type other: ZipFolder
         """
         self.__check_class(other)
@@ -106,10 +119,11 @@ class ZipFolder:
             self.add_file(file, other[file])
 
     def __getitem__(self, file_name: str):
-        if file_name in self.file_list:
-            return File.unpack(file_name, self.__raw_zip.open(file_name).read())
-        self.__raise(FileNotFound, file_name)
-        return None
+        if file_name not in self.file_list:
+            self.__raise(FileNotFound, file_name)
+        if file_name.endswith('/'):
+            return None
+        return File.unpack(file_name, self.__raw_zip.open(file_name).read())
 
     def __setitem__(self, key, value):
         if key not in self.file_list:
@@ -149,6 +163,109 @@ class ZipFolder:
         except (TypeError ,ValueError):
             self.__raise(FormatError, format_spec)
             return None
+
+    def __create_zip(self, files):
+        if '' in files:
+            self.__raise(EmptyFileName)
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', self.compression_options[self.compression_method]) as file_zip:
+            for file_name, data in files.items():
+                if file_name.endswith('/'):
+                    file_zip.writestr(zipfile.ZipInfo(file_name+'/'), '')
+                try:
+                    file_zip.writestr(file_name, data=File.pack(file_name, data))
+                    self.__metadata[file_name] = MetaData(file_zip.getinfo(file_name))
+                except (UnicodeDecodeError, JSONDecodeError):
+                    self.__raise(BytesDecodeError, file_name)
+
+        zip_buffer.seek(0)
+        return zipfile.ZipFile(zip_buffer, 'r')
+
+    def __add_metadata(self):
+        for file_name in self.file_list:
+            self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
+
+    def __get_minimal_paths_list(self):
+        sorted_file_list = sorted(self.file_list)
+        final_list = []
+        for first_index in range(len(sorted_file_list)):
+            flag = True
+            if self.__metadata[sorted_file_list[first_index]].is_folder:
+                for second_index in range(first_index+1, len(sorted_file_list)):
+                    if sorted_file_list[second_index].startswith(sorted_file_list[first_index]):
+                        flag = False
+                        break
+            if flag:
+                final_list.append(sorted_file_list[first_index])
+
+        return final_list
+
+    def __refresh_file_list(self):
+        """
+        currently only used in experimental mode
+        """
+        new_file_list = self.__get_minimal_paths_list()
+        for f in self.file_list:
+            if f not in new_file_list:
+                self.delete_file(f)
+
+    @property
+    def file_list(self):
+        return [file.filename for file in self.__raw_zip.filelist]
+
+    @property
+    def metadata(self):
+        return self.__metadata.copy()
+
+    @metadata.setter
+    def metadata(self, _value):
+        self.__raise(UnsupportedOption, 'set metadata')
+
+    @property
+    def settings(self):
+        return self.__settings.copy()
+
+    @settings.setter
+    def settings(self, value):
+        self.__raise(UnsupportedOption, 'set settings')
+
+    @property
+    def compression_method(self):
+        """
+        shows the name of the compression method use in the creation of this zip
+
+        :return:            name of the compression method
+        :rtype:             str
+        """
+        for k,v in self.compression_options.items():
+            if self.__settings.get('compression_method') == v:
+                return k
+        return None
+
+    @compression_method.setter
+    def compression_method(self, value):
+        self.__settings['compression_method'] = self.__get_compression(value)
+        self.__raw_zip = self.__create_zip(self.raw_files())
+        self.__add_metadata()
+
+    @property
+    def experimental(self):
+        return getattr(self.__settings, 'experimental', False)
+
+    @experimental.setter
+    def experimental(self, value):
+        if type(value) is not bool:
+            self.__raise(UnsupportedValueType, value, 'bool')
+        self.__settings['experimental'] = value
+
+    def __get_compression(self, compression):
+        if (
+                (compression not in self.compression_options.values())
+                and
+                (compression not in self.compression_options.keys())
+        ):
+            return self.compression_options['DEFLATED']
+        return self.compression_options.get(compression) if type(compression) is str else compression
 
     def experimental_info(self):
         """
@@ -288,34 +405,6 @@ class ZipFolder:
         :rtype:                 bytes | str | dict | ZipFolder
         """
         return self[file_name] if file_name in self.file_list else None
-
-    def __get_minimal_paths_list(self):
-        sorted_file_list = sorted(self.file_list)
-        final_list = []
-        for first_index in range(len(sorted_file_list)):
-            flag = True
-            if self.__metadata[sorted_file_list[first_index]].is_folder:
-                for second_index in range(first_index+1, len(sorted_file_list)):
-                    if sorted_file_list[second_index].startswith(sorted_file_list[first_index]):
-                        flag = False
-                        break
-            if flag:
-                final_list.append(sorted_file_list[first_index])
-
-        return final_list
-
-    def __refresh_file_list(self):
-        """
-        currently only used in experimental mode
-        """
-        new_file_list = self.__get_minimal_paths_list()
-        for f in self.file_list:
-            if f not in new_file_list:
-                self.delete_file(f)
-
-    def __add_metadata(self):
-        for file_name in self.file_list:
-            self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
 
     def create_directory(self, directory):
         """
@@ -457,18 +546,6 @@ class ZipFolder:
         """
         return {file: self[file] for file in self.file_list}
 
-    @property
-    def file_list(self):
-        return [file.filename for file in self.__raw_zip.filelist]
-
-    @property
-    def metadata(self):
-        return self.__metadata.copy()
-
-    @metadata.setter
-    def metadata(self, _value):
-        self.__raise(UnsupportedOption, 'set metadata')
-
     def get_b64(self):
         """
         the string this function returns can be used in several ways:
@@ -504,21 +581,6 @@ class ZipFolder:
     def __change_mode(self, mode):
         self.__raw_zip.mode = mode
 
-    def __create_zip(self, files):
-        if '' in files:
-            self.__raise(EmptyFileName)
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as file_zip:
-            for file_name, data in files.items():
-                try:
-                    file_zip.writestr(file_name, data=File.pack(file_name, data))
-                    self.__metadata[file_name] = MetaData(file_zip.getinfo(file_name))
-                except (UnicodeDecodeError, JSONDecodeError):
-                    self.__raise(BytesDecodeError, file_name)
-
-        zip_buffer.seek(0)
-        return zipfile.ZipFile(zip_buffer, 'r')
-
     @staticmethod
     def __create_base_dict(names):
         return {name: File.create_base(File.get_extension(name)) for name in names}
@@ -547,7 +609,7 @@ class ZipFolder:
 
     def __save(self, path_with_name, data):
         if type(path_with_name) is not str:
-            self.__raise(UnsupportedValueType, path_with_name)
+            self.__raise(UnsupportedValueType, path_with_name, 'str')
         with open(path_with_name, 'wb' if type(data) is bytes else 'w') as fh:
             fh.write(data)
 
@@ -559,7 +621,7 @@ class ZipFolder:
         :type path_with_name:       str
         """
         if type(path_with_name) is not str:
-            self.__raise(UnsupportedValueType, path_with_name)
+            self.__raise(UnsupportedValueType, path_with_name, 'str')
         self.__save(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', self.get_bytes())
 
     def safe_save(self, path_with_name='./temp.zip'):
@@ -596,3 +658,60 @@ class ZipFolder:
             self.__raise(FileAlreadyExists, f'./{file_name}')
         self.__save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
 
+    def export_data(self, path_with_name=None):
+        """
+        exports the ZipFolder data into a custom JSON file
+
+        :param path_with_name:            path to be saved to (./export.json by default)
+        :type path_with_name:             str
+        """
+        with open(path_with_name if path_with_name else './export.json', 'w') as fh:
+            dump({
+            'data': self.get_b64(),
+            'metadata': {f: md.metadata() for f,md in self.metadata.items()},
+            'settings': self.settings,
+            'main_comment': self.get_comment(),
+            'file_comments': {f: self.get_comment(f) for f in self.file_list if self.get_comment(f)}
+            }, fh, indent=4)
+
+    def safe_export(self, path_with_name=None):
+        """
+        exports the ZipFolder data into a costume JSON file
+
+        :param path_with_name:            path to be saved to (./export.json by default)
+        :type path_with_name:             str
+        """
+        if path.exists(path_with_name if path_with_name else './export.json'):
+            self.__raise(FileAlreadyExists, path_with_name)
+        self.export_data(path_with_name)
+
+    @staticmethod
+    def import_data(path_with_name):
+        """
+        imports ZipFolder data from the JSON file that was created from the export function.
+
+        extra data imported:
+
+        - metadata
+        - settings
+        - comments
+
+        :param path_with_name:          path to JSON file
+        :type path_with_name:           str
+        """
+        self = ZipFolder({})
+        with open(path_with_name, 'r') as fh:
+            file_data = load(fh)
+        self.__raw_zip = self.__b64_to_zip(file_data['data']) if 'data' in file_data.keys() \
+            else self.__raise(DataNotFound)
+        self.compression_method = self.__get_compression(file_data['settings']['compression_method'])
+        for f, md in file_data['metadata'].items():
+            self.__metadata[f] = MetaData(export=md)
+        self.set_comment(file_data['main_comment'])
+        for f, c in file_data['file_comments'].items():
+            self.set_comment(c, f)
+        return self
+
+    def print_structure(self):
+        for line in tree_from_dict(build_tree_dict(self.__metadata)):
+            print(line)

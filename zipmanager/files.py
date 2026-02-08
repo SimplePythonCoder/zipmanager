@@ -136,4 +136,3 @@ class CSV(BaseFile):
         print("-" * (sum(column_widths) + ((len(column_widths) - 1) * 3)))
         for row in rows[1:]:
             print(" | ".join(value.ljust(column_widths[i]) for i, value in enumerate(row)))
-

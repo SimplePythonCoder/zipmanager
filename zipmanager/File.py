@@ -21,7 +21,7 @@ class File:
 
     @classmethod
     def get_extension(cls, name):
-        return name.split('.')[1] if '.' in name else ''
+        return name.split('.')[-1] if '.' in name else ''
 
     @classmethod
     def create_base(cls, extension=None):
@@ -56,7 +56,7 @@ class File:
             data = cls.open_file(data)
         if '.' not in name:
             return data if type(data) is bytes else cls.__raise(NonBytesInput, name)
-        match name.split('.')[-1]:
+        match cls.get_extension(name):
             case 'json':
                 return json.dumps(json.loads(data)) if type(data) is bytes else json.dumps(data)
             case 'txt' | 'py' | 'html' | 'java':
@@ -82,7 +82,7 @@ class File:
     def unpack(cls, name, data):
         if '.' not in name:
             return data
-        match name.split('.')[-1]:
+        match cls.get_extension(name):
             case 'json':
                 return json.loads(data)
             case 'txt' | 'py' | 'html' | 'java':
@@ -117,16 +117,35 @@ class MetaData:
     """
     A simple metadata object for extra data
     """
-    def __init__(self, z_info):
-        self.name = z_info.filename
-        self.creation_datetime = datetime(*z_info.date_time)
-        self.size = z_info.file_size
-        self.compress_size = z_info.compress_size
-        self.original_filename = z_info.filename
+    def __init__(self, z_info=None, export: dict=None):
+        if z_info:
+            self.name = z_info.filename
+            self.creation_datetime = datetime(*z_info.date_time)
+            self.size = z_info.file_size
+            self.compress_size = z_info.compress_size
+            self.original_filename = z_info.filename
+        elif export:
+            self.name = export['filename']
+            self.creation_datetime = datetime.fromisoformat(export['creation_datetime'])
+            self.size = export['file_size']
+            self.compress_size = export['compress_size']
+            self.original_filename = export['original_filename']
 
     @property
     def is_folder(self):
         return bool(re.search(r'^(.+/)+$', self.name))
+
+    def metadata(self):
+        return {
+            'filename': self.name,
+            'creation_datetime': self.creation_datetime.isoformat(),
+            'file_size': self.size,
+            'compress_size': self.compress_size,
+            'original_filename': self.original_filename
+        }
+
+    def __iter__(self):
+        return self.metadata().items().__iter__()
 
 
 create_base = File.create_base
