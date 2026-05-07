@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.1](https://pypi.org/project/zipmanager/0.7.1/) - 2026-05-07
+
+Added:
+- The following base files for the following extensions:
+  - `c++` using `.cpp`, `.cc` or `.cxx`
+  - `xml` using `.xml`
+  - `svg` using `.svg`
+  - `bash` using `.sh`
+- using `tree` in `format()` will now return the tree structure string. 
+
+Updated:
+- `print_csv` now ignores any extra values not in columns and uses a more beautified print.
+
+Bug fixes:
+- fixes to folder handling.
+- minor fixes to zip creation and export function.
+- fixed `change_name` to prevent from changing into a name that already exists.
+- fixed bug where `print_csv` would throw an exception if there are more headers than values in a row, will now show as empty instead.
+
 ## [0.7.0](https://pypi.org/project/zipmanager/0.7.0/) - 2026-02-08
 
 Added:
@@ -8,7 +27,7 @@ Added:
 - the `ZipFolder` class now uses a setting dict with an accompanying property for each value (use the properties)
 - new export/import system to keep some extra metadata unique to the ZipFolder object in a JSON file
 - automatic creation of folders in initialization with a '/' at the end: 
-`ZipFolder({folder/})` or `ZipFolder({folder/: b''})`
+`ZipFolder({'folder/'})` or `ZipFolder({'folder/': b''})`
 
 Updated:
 - the `UnsupportedValueType` error will now give the correct type at the end of the error messages

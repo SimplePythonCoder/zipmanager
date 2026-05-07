@@ -5,8 +5,8 @@ class UnknownCompressionMethod(Exception):
         super().__init__(f'the compression method "{method}" is unknown')
 
 class DataNotFound(Exception):
-    def __init__(self, method):
-        super().__init__('no data was  found in the export file')
+    def __init__(self):
+        super().__init__('no data was found in the export file')
 
 
 class NonBytesInput(Exception):
@@ -32,7 +32,7 @@ class FileNameConflict(Exception):
 
 class FolderNameConflict(Exception):
     def __init__(self, folder_name):
-        super().__init__(f'Folder "{folder_name}/" already exists in the zip folder')
+        super().__init__(f'Folder "{folder_name}" already exists in the zip folder')
 
 
 class FileNotFound(Exception):

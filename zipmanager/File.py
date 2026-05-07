@@ -16,12 +16,14 @@ class File:
     zipmanager = importlib.import_module(".main", 'zipmanager')
 
     @staticmethod
-    def __raise(exc, *args, **kwargs):
+    def _raise(exc, *args, **kwargs):
         raise exc(*args, **kwargs) from None
 
     @classmethod
-    def get_extension(cls, name):
-        return name.split('.')[-1] if '.' in name else ''
+    def get_extension(cls, name: str):
+        if name.endswith('/') or '.' not in name:
+            return ''
+        return name.split('.')[-1]
 
     @classmethod
     def create_base(cls, extension=None):
@@ -47,6 +49,16 @@ class File:
                         '<title></title>\n</head>\n<body>\n\n</body>\n</html>')
             case 'java':
                 return 'public static void main(String[] args){\n\n}'
+            case 'cpp' | 'cxx' | 'cc':
+                return '#include <iostream>\n\nint main() {\n\treturn 0;\n}'
+            case 'xml':
+                return '<?xml version="1.0" encoding="UTF-8" ?>\n'
+            case 'svg':
+                return '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+            case 'sh':
+                return '#!/bin/bash\n'
+            case 'bat':
+                return '@echo off\n'
             case _:
                 return b''
 
@@ -55,28 +67,28 @@ class File:
         if cls.is_path(data):
             data = cls.open_file(data)
         if '.' not in name:
-            return data if type(data) is bytes else cls.__raise(NonBytesInput, name)
+            return data if type(data) is bytes else cls._raise(NonBytesInput, name)
         match cls.get_extension(name):
             case 'json':
                 return json.dumps(json.loads(data)) if type(data) is bytes else json.dumps(data)
-            case 'txt' | 'py' | 'html' | 'java':
+            case 'txt' | 'py' | 'html' | 'java' | 'cpp' | 'cxx' | 'cc' | 'xml' | 'svg' | 'sh' | 'bat':
                 return data.decode() if type(data) is bytes \
                     else data if type(data) is str \
-                    else cls.__raise(NonBytesInput, name)
-            case  'md':
+                    else cls._raise(NonBytesInput, name)
+            case 'md':
                 return data if type(data) in [str, bytes] \
                 else data.encoded if data.__class__.__name__ == 'Markdown'\
-                else cls.__raise(NonBytesInput, name)
-            case  'csv':
+                else cls._raise(NonBytesInput, name)
+            case 'csv':
                 return data if type(data) in [str, bytes] \
                 else data.encoded if data.__class__.__name__ == 'CSV'\
-                else cls.__raise(NonBytesInput, name)
+                else cls._raise(NonBytesInput, name)
             case 'zip':
                 return data if type(data) is bytes and cls.zipmanager.ZipFolder(data) \
                     else data.get_bytes() if data.__class__.__name__ == 'ZipFolder' \
-                    else cls.__raise(ZipDecodeError, name)
+                    else cls._raise(ZipDecodeError, name)
             case _:
-                return data if type(data) is bytes else cls.__raise(NonBytesInput, name)
+                return data if type(data) is bytes else cls._raise(NonBytesInput, name)
 
     @classmethod
     def unpack(cls, name, data):
@@ -85,7 +97,7 @@ class File:
         match cls.get_extension(name):
             case 'json':
                 return json.loads(data)
-            case 'txt' | 'py' | 'html' | 'java':
+            case 'txt' | 'py' | 'html' | 'java' | 'cpp' | 'cxx' | 'cc' | 'xml' | 'svg' | 'sh' | 'bat':
                 return data.decode() if type(data) is bytes else data
             case 'md':
                 return Markdown(data)
@@ -100,7 +112,7 @@ class File:
     @classmethod
     def open_file(cls, file_path):
         if not os.path.exists(file_path):
-            cls.__raise(PathNotFound, file_path)
+            cls._raise(PathNotFound, file_path)
         with open(file_path, 'rb') as fh:
             return fh.read()
 

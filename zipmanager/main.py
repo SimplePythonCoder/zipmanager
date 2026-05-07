@@ -47,31 +47,31 @@ class ZipFolder:
         :param experimental:        used for testing experimental features, False by default.
         :type experimental:         bool
         """
-        self.__settings = {
+        self._settings = {
             'experimental': experimental,
-            'compression_method': self.__get_compression(compression_method)
+            'compression_method': self._get_compression(compression_method)
         }
-        self.__metadata = {}
+        self._metadata = {}
         match data:
             case dict():
-                self.__raw_zip = self.__create_zip(data)
+                self._raw_zip = self._create_zip(data)
             case set():
-                self.__raw_zip = self.__create_zip(self.__create_base_dict(data))
+                self._raw_zip = self._create_zip(self._create_base_dict(data))
             case str():
-                self.__raw_zip = self.__b64_to_zip(data) if not File.is_path(data) \
-                    else self.__bytes_to_zip(File.open_file(data))
-                self.__add_metadata()
+                self._raw_zip = self._b64_to_zip(data) if not File.is_path(data) \
+                    else self._bytes_to_zip(File.open_file(data))
+                self._add_metadata()
             case bytes():
-                self.__raw_zip = self.__bytes_to_zip(data)
+                self._raw_zip = self._bytes_to_zip(data)
             case _:
-                self.__raise(UnsupportedDataType, type(data))
+                self._raise(UnsupportedDataType, type(data))
 
     def __eq__(self, other):
-        self.__check_class(other)
+        self._check_class(other)
         return self.zip_hash() == other.zip_hash()
 
     def __add__(self, other):
-        self.__check_class(other)
+        self._check_class(other)
         temp = ZipFolder(self.raw_files())
         for f in other.file_list:
             if f not in temp.file_list:
@@ -79,7 +79,7 @@ class ZipFolder:
         return temp
 
     def __sub__(self, other):
-        self.__check_class(other)
+        self._check_class(other)
         temp = ZipFolder(self.raw_files())
         for f in self.file_list:
             if f in other.file_list and self[f] == other[f]:
@@ -91,7 +91,7 @@ class ZipFolder:
         Returns all files that are in both ZipFolder objects.
         :type other: ZipFolder
         """
-        self.__check_class(other)
+        self._check_class(other)
         temp = ZipFolder({})
         for f in self.file_list:
             if f in other.file_list and self[f] == other[f]:
@@ -103,7 +103,7 @@ class ZipFolder:
         Returns all files that are in both ZipFolder objects.
         :type other: ZipFolder
         """
-        self.__check_class(other)
+        self._check_class(other)
         temp = ZipFolder({})
         for f in self.file_list:
             if not (f in other.file_list and self[f] == other[f]) and f not in temp.file_list:
@@ -114,16 +114,16 @@ class ZipFolder:
         return temp
 
     def __lshift__(self, other):
-        self.__check_class(other)
+        self._check_class(other)
         for file in other.file_list:
             self.add_file(file, other[file])
 
     def __getitem__(self, file_name: str):
         if file_name not in self.file_list:
-            self.__raise(FileNotFound, file_name)
+            self._raise(FileNotFound, file_name)
         if file_name.endswith('/'):
-            return None
-        return File.unpack(file_name, self.__raw_zip.open(file_name).read())
+            return b''
+        return File.unpack(file_name, self._raw_zip.open(file_name).read())
 
     def __setitem__(self, key, value):
         if key not in self.file_list:
@@ -156,41 +156,42 @@ class ZipFolder:
             case 'files':
                 txt = str(self.file_list)[1:-1]
                 format_spec = format_spec.replace('files', '')
+            case 'tree':
+                txt = '\n'.join([line for line in tree_from_dict(build_tree_dict(self._metadata))])
+                format_spec = format_spec.replace('tree', '')
             case _:
                 txt = str(self)
         try:
             return format(txt, format_spec)
         except (TypeError ,ValueError):
-            self.__raise(FormatError, format_spec)
+            self._raise(FormatError, format_spec)
             return None
 
-    def __create_zip(self, files):
+    def _create_zip(self, files):
         if '' in files:
-            self.__raise(EmptyFileName)
+            self._raise(EmptyFileName)
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', self.compression_options[self.compression_method]) as file_zip:
             for file_name, data in files.items():
-                if file_name.endswith('/'):
-                    file_zip.writestr(zipfile.ZipInfo(file_name+'/'), '')
                 try:
                     file_zip.writestr(file_name, data=File.pack(file_name, data))
-                    self.__metadata[file_name] = MetaData(file_zip.getinfo(file_name))
+                    self._metadata[file_name] = MetaData(file_zip.getinfo(file_name))
                 except (UnicodeDecodeError, JSONDecodeError):
-                    self.__raise(BytesDecodeError, file_name)
+                    self._raise(BytesDecodeError, file_name)
 
         zip_buffer.seek(0)
         return zipfile.ZipFile(zip_buffer, 'r')
 
-    def __add_metadata(self):
+    def _add_metadata(self):
         for file_name in self.file_list:
-            self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
+            self._metadata[file_name] = MetaData(self._raw_zip.getinfo(file_name))
 
-    def __get_minimal_paths_list(self):
+    def _get_minimal_paths_list(self):
         sorted_file_list = sorted(self.file_list)
         final_list = []
         for first_index in range(len(sorted_file_list)):
             flag = True
-            if self.__metadata[sorted_file_list[first_index]].is_folder:
+            if self._metadata[sorted_file_list[first_index]].is_folder:
                 for second_index in range(first_index+1, len(sorted_file_list)):
                     if sorted_file_list[second_index].startswith(sorted_file_list[first_index]):
                         flag = False
@@ -200,34 +201,34 @@ class ZipFolder:
 
         return final_list
 
-    def __refresh_file_list(self):
+    def _refresh_file_list(self):
         """
         currently only used in experimental mode
         """
-        new_file_list = self.__get_minimal_paths_list()
+        new_file_list = self._get_minimal_paths_list()
         for f in self.file_list:
             if f not in new_file_list:
                 self.delete_file(f)
 
     @property
     def file_list(self):
-        return [file.filename for file in self.__raw_zip.filelist]
+        return [file.filename for file in self._raw_zip.filelist]
 
     @property
     def metadata(self):
-        return self.__metadata.copy()
+        return self._metadata.copy()
 
     @metadata.setter
     def metadata(self, _value):
-        self.__raise(UnsupportedOption, 'set metadata')
+        self._raise(UnsupportedOption, 'set metadata')
 
     @property
     def settings(self):
-        return self.__settings.copy()
+        return self._settings.copy()
 
     @settings.setter
     def settings(self, value):
-        self.__raise(UnsupportedOption, 'set settings')
+        self._raise(UnsupportedOption, 'set settings')
 
     @property
     def compression_method(self):
@@ -238,27 +239,27 @@ class ZipFolder:
         :rtype:             str
         """
         for k,v in self.compression_options.items():
-            if self.__settings.get('compression_method') == v:
+            if self._settings.get('compression_method') == v:
                 return k
         return None
 
     @compression_method.setter
     def compression_method(self, value):
-        self.__settings['compression_method'] = self.__get_compression(value)
-        self.__raw_zip = self.__create_zip(self.raw_files())
-        self.__add_metadata()
+        self._settings['compression_method'] = self._get_compression(value)
+        self._raw_zip = self._create_zip(self.raw_files())
+        self._add_metadata()
 
     @property
     def experimental(self):
-        return getattr(self.__settings, 'experimental', False)
+        return getattr(self._settings, 'experimental', False)
 
     @experimental.setter
     def experimental(self, value):
         if type(value) is not bool:
-            self.__raise(UnsupportedValueType, value, 'bool')
-        self.__settings['experimental'] = value
+            self._raise(UnsupportedValueType, value, 'bool')
+        self._settings['experimental'] = value
 
-    def __get_compression(self, compression):
+    def _get_compression(self, compression):
         if (
                 (compression not in self.compression_options.values())
                 and
@@ -288,11 +289,11 @@ class ZipFolder:
         :type file_name:        str
         """
         if file_name is None:
-            self.__raw_zip.comment = comment.encode()
+            self._raw_zip.comment = comment.encode()
         elif file_name in self.file_list:
-            self.__raw_zip.getinfo(file_name).comment = comment.encode()
+            self._raw_zip.getinfo(file_name).comment = comment.encode()
         else:
-            self.__raise(FileNotFound, file_name)
+            self._raise(FileNotFound, file_name)
 
     def get_comment(self, file_name=None):
         """
@@ -303,11 +304,11 @@ class ZipFolder:
         :rtype:                 str | None
         """
         if not file_name:
-            return self.__raw_zip.comment.decode() if self.__raw_zip.comment else None
+            return self._raw_zip.comment.decode() if self._raw_zip.comment else None
         if file_name in self.file_list:
-            return self.__raw_zip.getinfo(file_name).comment.decode() if self.__raw_zip.getinfo(file_name).comment else None
+            return self._raw_zip.getinfo(file_name).comment.decode() if self._raw_zip.getinfo(file_name).comment else None
         else:
-            self.__raise(FileNotFound, file_name)
+            self._raise(FileNotFound, file_name)
             return None
 
     def print_zip(self):
@@ -316,7 +317,7 @@ class ZipFolder:
         """
         with io.StringIO() as string:
             with redirect_stdout(string):
-                self.__raw_zip.printdir()
+                self._raw_zip.printdir()
             string.seek(0)
             print('\n'.join(string.read().split('\n')[:-1]))
 
@@ -339,9 +340,9 @@ class ZipFolder:
                 case 'zip':
                     return self[file_name].zip_hash(hash_format, hex_val)
                 case _:
-                    return getattr(hashlib, hash_format)(self.__raw_zip.read(file_name)).hexdigest() if hex_val \
-                    else getattr(hashlib, hash_format)(self.__raw_zip.read(file_name))
-        self.__raise(FileNotFound, file_name)
+                    return getattr(hashlib, hash_format)(self._raw_zip.read(file_name)).hexdigest() if hex_val \
+                    else getattr(hashlib, hash_format)(self._raw_zip.read(file_name))
+        self._raise(FileNotFound, file_name)
         return None
 
     def zip_hash(self, hash_format='sha256', hex_val=True):
@@ -368,8 +369,8 @@ class ZipFolder:
         :return:                datetime object representing the creation time of the file
         :rtype:                 datetime
         """
-        return self.__metadata[file_name].creation_datetime if file_name in self.file_list \
-            else self.__raise(FileNotFound, file_name)
+        return self._metadata[file_name].creation_datetime if file_name in self.file_list \
+            else self._raise(FileNotFound, file_name)
 
     def get_size(self, file_name=None, compressed=False):
         """
@@ -387,10 +388,10 @@ class ZipFolder:
         match file_name:
             case str():
                 if file_name in self.file_list:
-                    return getattr(self.__metadata[file_name], 'compress_size' if compressed else 'size')
-                self.__raise(FileNotFound, file_name)
+                    return getattr(self._metadata[file_name], 'compress_size' if compressed else 'size')
+                self._raise(FileNotFound, file_name)
             case _:
-                for file in self.__raw_zip.filelist:
+                for file in self._raw_zip.filelist:
                     size += getattr(file, 'compress_size' if compressed else 'file_size')
         return size
 
@@ -416,24 +417,24 @@ class ZipFolder:
         if directory.endswith('/'):
             directory = directory[:-1]
         if f'{directory}/' in self.file_list:
-            self.__raise(FolderNameConflict, directory)
+            self._raise(FolderNameConflict, directory)
             return
-        self.__change_mode('w')
-        self.__raw_zip.writestr(zipfile.ZipInfo(directory+'/'), '')
-        self.__metadata[f'{directory}/'] = MetaData(self.__raw_zip.getinfo(f'{directory}/'))
-        self.__change_mode('r')
+        self._change_mode('w')
+        self._raw_zip.writestr(zipfile.ZipInfo(directory+'/'), '')
+        self._metadata[f'{directory}/'] = MetaData(self._raw_zip.getinfo(f'{directory}/'))
+        self._change_mode('r')
         if self.experimental:
-            self.__refresh_file_list()
+            self._refresh_file_list()
 
     def add_file(self, file_name, file_data):
         if file_name in self.file_list:
-            self.__raise(FileNameConflict, file_name)
-        self.__change_mode('w')
-        self.__raw_zip.writestr(file_name, File.pack(file_name, file_data))
-        self.__metadata[file_name] = MetaData(self.__raw_zip.getinfo(file_name))
-        self.__change_mode('r')
+            self._raise(FileNameConflict, file_name)
+        self._change_mode('w')
+        self._raw_zip.writestr(file_name, File.pack(file_name, file_data))
+        self._metadata[file_name] = MetaData(self._raw_zip.getinfo(file_name))
+        self._change_mode('r')
         if self.experimental:
-            self.__refresh_file_list()
+            self._refresh_file_list()
 
     def add_files(self, data):
         """
@@ -445,7 +446,7 @@ class ZipFolder:
                                 | dict[str, ZipFolder] | set[str]
         """
         if temp := [file for file in data if file in self.file_list]:
-            self.__raise(FileNameConflict, temp[0])
+            self._raise(FileNameConflict, temp[0])
         match data:
             case dict():
                 for file in data:
@@ -454,7 +455,7 @@ class ZipFolder:
                 for file in data:
                     self.add_file(file, File.create_base(File.get_extension(file)))
             case list():
-                self.__raise(UnsupportedOption, 'add_files with list')
+                self._raise(UnsupportedOption, 'add_files with list')
 
     def update_file(self, file_name, new_data):
         """
@@ -466,13 +467,13 @@ class ZipFolder:
         :type new_data:        str | bytes | dict | list | ZipFolder
         """
         if file_name in self.file_list:
-            temp = self.__metadata[file_name].creation_datetime
+            temp = self._metadata[file_name].creation_datetime
             self.delete_file(file_name)
             self.add_file(file_name, new_data)
-            self.__metadata[file_name].creation_datetime = temp
+            self._metadata[file_name].creation_datetime = temp
             del temp
         else:
-            self.__raise(FileNotFound, file_name)
+            self._raise(FileNotFound, file_name)
 
     def update_files(self, update_dict):
         """
@@ -483,7 +484,7 @@ class ZipFolder:
         :type update_dict:        dict[str, dict] | dict[str, str] | dict[str, bytes] | dict[str, ZipFolder]
         """
         if temp:=[file for file in update_dict.keys() if file not in self.file_list]:
-            self.__raise(FileNotFound, temp[0])
+            self._raise(FileNotFound, temp[0])
         for file, new_data in update_dict.items():
             self.update_file(file, new_data)
 
@@ -498,14 +499,18 @@ class ZipFolder:
         :type new_name:         str
         """
         if old_name not in self.file_list:
-            self.__raise(FileNotFound, old_name)
+            self._raise(FileNotFound, old_name)
+        if new_name in self.file_list:
+            self._raise(FolderNameConflict, new_name) \
+                if new_name.endswith('/') \
+                else self._raise(FileNameConflict, new_name)
         if old_name != new_name:
-            self.__raw_zip.getinfo(old_name).filename = new_name
-            self.__metadata[new_name] = self.__metadata.pop(old_name)
-            self.__metadata[new_name].name = new_name
-            self.__raw_zip.NameToInfo[new_name] = self.__raw_zip.NameToInfo.pop(old_name)
+            self._raw_zip.getinfo(old_name).filename = new_name
+            self._metadata[new_name] = self._metadata.pop(old_name)
+            self._metadata[new_name].name = new_name
+            self._raw_zip.NameToInfo[new_name] = self._raw_zip.NameToInfo.pop(old_name)
         else:
-            self.__log('How did we get here?')
+            self._log('How did we get here?')
 
     def delete_file(self, file_name):
         """
@@ -516,10 +521,10 @@ class ZipFolder:
         :return:                     success status of the deletion (file not found will return False)
         :rtype:                      bool
         """
-        if (file_name in self.file_list) and (temp:=[f for f in self.__raw_zip.filelist if f.filename == file_name]):
-            self.__raw_zip.filelist.remove(temp[0])
-            del self.__raw_zip.NameToInfo[file_name]
-            del self.__metadata[file_name]
+        if (file_name in self.file_list) and (temp:=[f for f in self._raw_zip.filelist if f.filename == file_name]):
+            self._raw_zip.filelist.remove(temp[0])
+            del self._raw_zip.NameToInfo[file_name]
+            del self._metadata[file_name]
             return True
         return False
 
@@ -534,7 +539,7 @@ class ZipFolder:
         :rtype:                       dict[str, bool]
         """
         if type(file_names) is list:
-            self.__log('Warning: usage of list type for delete_files'
+            self._log('Warning: usage of list type for delete_files'
                        ' is deprecated as of version 0.5.0')
         return {file: self.delete_file(file) for file in file_names}
 
@@ -574,42 +579,42 @@ class ZipFolder:
         zip_buffer.seek(0)
         return zip_buffer.read()
 
-    def __check_class(self, other):
+    def _check_class(self, other):
         if type(self) is not type(other):
-            self.__raise(ExternalClassOperation, type(other))
+            self._raise(ExternalClassOperation, type(other))
 
-    def __change_mode(self, mode):
-        self.__raw_zip.mode = mode
+    def _change_mode(self, mode):
+        self._raw_zip.mode = mode
 
     @staticmethod
-    def __create_base_dict(names):
+    def _create_base_dict(names):
         return {name: File.create_base(File.get_extension(name)) for name in names}
 
-    def __bytes_to_zip(self, data):
+    def _bytes_to_zip(self, data):
         try:
             return zipfile.ZipFile(io.BytesIO(data), 'r')
         except zipfile.BadZipfile:
-            self.__raise(ZipDecodeError)
+            self._raise(ZipDecodeError)
             return None
 
-    def __b64_to_zip(self, data):
+    def _b64_to_zip(self, data):
         try:
             return zipfile.ZipFile(io.BytesIO(base64.b64decode(data)), 'r')
         except (binascii.Error, zipfile.BadZipfile):
-            self.__raise(Base64DecodingError)
+            self._raise(Base64DecodingError)
             return None
 
     @staticmethod
-    def __log(msg, level='warning'):
+    def _log(msg, level='warning'):
         getattr(logging.getLogger('zipmanager'), level)(msg)
 
     @staticmethod
-    def __raise(exc, *args, **kwargs):
+    def _raise(exc, *args, **kwargs):
         raise exc(*args, **kwargs) from None
 
-    def __save(self, path_with_name, data):
+    def _save(self, path_with_name, data):
         if type(path_with_name) is not str:
-            self.__raise(UnsupportedValueType, path_with_name, 'str')
+            self._raise(UnsupportedValueType, path_with_name, 'str')
         with open(path_with_name, 'wb' if type(data) is bytes else 'w') as fh:
             fh.write(data)
 
@@ -621,8 +626,8 @@ class ZipFolder:
         :type path_with_name:       str
         """
         if type(path_with_name) is not str:
-            self.__raise(UnsupportedValueType, path_with_name, 'str')
-        self.__save(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', self.get_bytes())
+            self._raise(UnsupportedValueType, path_with_name, 'str')
+        self._save(path_with_name if path_with_name.endswith('.zip') else path_with_name + '.zip', self.get_bytes())
 
     def safe_save(self, path_with_name='./temp.zip'):
         """
@@ -633,7 +638,7 @@ class ZipFolder:
         :type path_with_name:       str
         """
         if path.exists(path_with_name):
-            self.__raise(FileAlreadyExists, path_with_name)
+            self._raise(FileAlreadyExists, path_with_name)
         self.save(path_with_name)
 
     def save_file(self, file_name, path_with_name=None):
@@ -643,7 +648,7 @@ class ZipFolder:
         :param path_with_name:            path to be saved to (./file_name by default)
         :type path_with_name:             str
         """
-        self.__save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
+        self._save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
 
     def safe_save_file(self, file_name, path_with_name=None):
         """
@@ -653,10 +658,10 @@ class ZipFolder:
         :type path_with_name:           str
         """
         if type(path_with_name) is str and path.exists(path_with_name):
-            self.__raise(FileAlreadyExists, path_with_name)
+            self._raise(FileAlreadyExists, path_with_name)
         elif path.exists(f'./{file_name}'):
-            self.__raise(FileAlreadyExists, f'./{file_name}')
-        self.__save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
+            self._raise(FileAlreadyExists, f'./{file_name}')
+        self._save(path_with_name if path_with_name else f'./{file_name}', self[file_name])
 
     def export_data(self, path_with_name=None):
         """
@@ -668,8 +673,8 @@ class ZipFolder:
         with open(path_with_name if path_with_name else './export.json', 'w') as fh:
             dump({
             'data': self.get_b64(),
-            'metadata': {f: md.metadata() for f,md in self.metadata.items()},
-            'settings': self.settings,
+            'metadata': {f: md.metadata() for f,md in self._metadata.items()},
+            'settings': self._settings,
             'main_comment': self.get_comment(),
             'file_comments': {f: self.get_comment(f) for f in self.file_list if self.get_comment(f)}
             }, fh, indent=4)
@@ -682,7 +687,7 @@ class ZipFolder:
         :type path_with_name:             str
         """
         if path.exists(path_with_name if path_with_name else './export.json'):
-            self.__raise(FileAlreadyExists, path_with_name)
+            self._raise(FileAlreadyExists, path_with_name)
         self.export_data(path_with_name)
 
     @staticmethod
@@ -702,16 +707,15 @@ class ZipFolder:
         self = ZipFolder({})
         with open(path_with_name, 'r') as fh:
             file_data = load(fh)
-        self.__raw_zip = self.__b64_to_zip(file_data['data']) if 'data' in file_data.keys() \
-            else self.__raise(DataNotFound)
-        self.compression_method = self.__get_compression(file_data['settings']['compression_method'])
+        self._raw_zip = self._b64_to_zip(file_data['data']) if 'data' in file_data.keys() \
+            else self._raise(DataNotFound)
+        self.compression_method = self._get_compression(file_data['settings']['compression_method'])
         for f, md in file_data['metadata'].items():
-            self.__metadata[f] = MetaData(export=md)
+            self._metadata[f] = MetaData(export=md)
         self.set_comment(file_data['main_comment'])
         for f, c in file_data['file_comments'].items():
             self.set_comment(c, f)
         return self
 
     def print_structure(self):
-        for line in tree_from_dict(build_tree_dict(self.__metadata)):
-            print(line)
+        print(f'{self:tree}')
